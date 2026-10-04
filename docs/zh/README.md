@@ -2,6 +2,8 @@
 
 简体中文文档。英文文档见 [English](./en/README.md)，英文介绍见 [README.en.md](../../README.en.md)。
 
+> 定位：**OpenAI 兼容网关（NewAPI / LiteLLM / one-api …）与 OpenCode 之间的兼容层**。客户端照常说 OpenAI 协议，中间件负责会话重组、模型映射、上游选择与错误透传。
+
 ## 📚 目录
 
 | 章节 | 说明 |

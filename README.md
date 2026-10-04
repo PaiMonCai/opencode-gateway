@@ -1,14 +1,16 @@
 # OpenCode Gateway
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Node.js-18+-orange" alt="Node">
 </p>
 
 简体中文 | [English](./README.en.md)
 
-把本地 [OpenCode](https://opencode.ai) 运行时转换为 OpenAI 兼容 API 网关，在任何客户端中使用不限量的 OpenCode Zen 免费模型。
+**任何 OpenAI 兼容网关（NewAPI / LiteLLM / one-api …）与 [OpenCode](https://opencode.ai) 之间的兼容层。**
+
+客户端照常用 OpenAI 协议请求，中间件负责消除 NewAPI ⇄ OpenCode 之间的不兼容：把无状态对话重组成 OpenCode 的会话（上游要的会话身份头、多轮上下文复用），并把请求规范化成 OpenCode 能接受的样子。Go 订阅 / 付费 Zen 模型**直连** OpenCode 的 OpenAI 兼容端点，免费档模型交给本地 runtime 代发。
 
 ## ✨ 功能特性
 
@@ -35,6 +37,8 @@ curl http://127.0.0.1:10000/health
 ```
 
 > 默认 Compose 配置不挂载宿主机项目目录，避免覆盖镜像内已安装的 `node_modules`。需要源码热更新时，请单独使用开发用的 Compose 覆盖文件。
+
+> 只使用 Go 订阅 / 付费 Zen 时，可以完全不要本地 runtime：设 `OPENCODE_ZEN_API_KEY`，并把 `OPENCODE_SERVER_URL` 指向一个不可达地址即可（模型清单与模型解析会自动改用上游公开目录）。想用免费档才需要安装 OpenCode CLI 并由中间件托管后端。
 
 ### Node.js（本地开发）
 
@@ -113,7 +117,8 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_SERVER_PASSWORD` | (空) | OpenCode 后端密码 |
 | `OPENCODE_PROXY_PORT` / `PORT` | `10000` | 代理端口 |
 | `OPENCODE_SERVER_PORT` | `10001` | 后端端口（未显式配置 `OPENCODE_SERVER_URL` 时生效） |
-| `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | 后端地址 |
+| `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | 后端地址（纯直连部署可指向不可达地址） |
+| `OPENCODE_ZEN_API_KEY` | (空) | OpenCode 账号/订阅 key：配好后 Go 与付费 Zen 走直连，同时传给托管的 runtime |
 | `OPENCODE_DISABLE_TOOLS` | `true` | 禁用 OpenCode 内置工具 |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | (空) | 请求未带 `tools` 时放行的内置工具，逗号分隔 |
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` 或 `plugin-inject` |
@@ -124,6 +129,9 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_PROXY_SESSION_HEADERS` | (见文档) | 识别会话身份的请求头，逗号分隔 |
 | `OPENCODE_PROXY_SESSION_DERIVE` | `false` | 无会话头时从请求内容推导会话身份（网关无法透传自定义头时用） |
 | `OPENCODE_PROXY_DIRECT` | `true` | Go/付费 Zen 模型直连 OpenCode 端点（免费档仍走 runtime） |
+| `OPENCODE_PROXY_DIRECT_GO_URL` | `https://opencode.ai/zen/go/v1` | Go 订阅端点 |
+| `OPENCODE_PROXY_DIRECT_ZEN_URL` | `https://opencode.ai/zen/v1` | 付费 Zen 端点 |
+| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `true` | 免费档模型仍走 runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `true` | 直连被拒时回退 runtime |
 | `OPENCODE_USE_ISOLATED_HOME` | `false` | 使用隔离的 OpenCode 配置目录 |
 | `OPENCODE_PROXY_DEBUG` | `false` | 调试日志 |
@@ -133,8 +141,18 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 推荐生产配置：
 
 ```env
+# 认证与后端
 API_KEY=your-secret-key
 OPENCODE_SERVER_PASSWORD=your-password
+
+# 上游凭据（Go / 付费 Zen 走直连，免费档走 runtime）
+OPENCODE_ZEN_API_KEY=your-opencode-key
+
+# 会话：网关透传自定义头时用显式头；透传不了就开推导模式
+OPENCODE_PROXY_SESSION_REUSE=true
+OPENCODE_PROXY_SESSION_DERIVE=true
+
+# 工具与提示词
 OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject

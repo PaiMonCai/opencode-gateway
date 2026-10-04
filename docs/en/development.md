@@ -38,20 +38,27 @@ docker compose logs -f
 ## 📂 Project Layout
 
 ```
-OpenCode Gateway/
-├── index.js                  # Entry and config loading
+opencode-gateway/
+├── index.js                       # Entry point and config loading (env / config.json / startup banner)
 ├── src/
-│   ├── proxy.js              # Core proxy logic
-│   └── tool-runtime/         # Tool bridge runtime (contracts/parser/policy/registry/router/validator)
+│   ├── proxy.js                   # The middleware: routing, conversations, dual upstream, tool policy
+│   ├── upstream/
+│   │   └── direct-client.js       # Direct OpenCode endpoints: fingerprint headers, SSE rewrite, model catalog
+│   └── tool-runtime/              # Text tool contract (runtime path only: contracts/parser/policy/registry/router/validator)
+├── plugin/
+│   ├── opencode-gateway-tool-lock.js  # Backend plugin: enforces the policy carried in the session title
+│   └── tool-lock.js                   # Deny-everything variant
 ├── tests/
-│   ├── unit/                 # Jest unit tests (npm test)
-│   ├── integration/          # Docker-backed integration tests
-│   └── manual/               # Live-backend smoke tests, not in CI
-├── docs/                     # Docs (zh/ + en/)
-├── entrypoint.sh             # Docker entrypoint
+│   ├── unit/                      # Jest suites (npm test): app / session-reuse / direct-upstream / tool-lock / parser
+│   ├── integration/               # Docker integration test
+│   └── manual/                    # Real-backend smoke test, not in CI
+├── docs/                          # Documentation (zh/ + en/)
+├── entrypoint.sh                  # Docker entrypoint
 ├── Dockerfile
 └── docker-compose.yml
 ```
+
+> Two upstream paths: the conversation layer in `src/proxy.js` keeps "one conversation = one session identity", and `src/upstream/direct-client.js` speaks to OpenCode directly. The local runtime only serves free-tier models. When you touch either, run `tests/unit/session-reuse.test.js` and `tests/unit/direct-upstream.test.js` too.
 
 ## 📝 Commit Style
 

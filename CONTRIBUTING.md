@@ -2,6 +2,19 @@
 
 Thank you for your interest in contributing to opencode-gateway!
 
+## Scope
+
+This project is a **compatibility layer between an OpenAI-format gateway and OpenCode**. In scope:
+
+- making an OpenAI-shaped request work against OpenCode (conversations, headers, model mapping, error shapes);
+- keeping the two upstream paths honest: direct to OpenCode's OpenAI-compatible endpoints, and the local runtime for the free tier;
+- reliability of the conversation layer (reuse, incremental delivery, rotation, cleanup, bounded waits);
+- documentation that matches the code.
+
+Out of scope: general gateway features (multi-upstream routing, billing, quotas, tenancy, key pools), and reimplementing the model provider itself.
+
+Two files carry most of the design: `src/proxy.js` (routing, conversations, tool policy) and `src/upstream/direct-client.js` (the direct upstream). Change one and you usually look at the other.
+
 ## Code of Conduct
 
 Please be respectful and professional. We follow the [Contributor Covenant](https://www.contributor-covenant.org/).
@@ -25,13 +38,15 @@ Please be respectful and professional. We follow the [Contributor Covenant](http
 
 ### Pull Requests
 
-1. Fork the repository
+1. Fork the repository (maintainers branch off `main` directly)
 2. Create a feature branch: `git checkout -b feature/your-feature`
 3. Make your changes
-4. Run tests: `npm test`
+4. Run tests: `npm test` (197 unit cases today; the conversation layer and the direct upstream each have their own suite)
 5. Commit with clear messages (see Commit Style below)
 6. Push to your fork
 7. Submit a Pull Request
+
+> Pushing to `main` triggers the Docker image build (`.github/workflows/docker-publish.yml`), so let a PR settle before merging.
 
 ## Commit Style
 
@@ -92,3 +107,5 @@ npm start
 ## License
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](./LICENSE.md).
+
+This project is derived from [OpenCode2API](https://github.com/TiaraBasori/OpenCode2API) (MIT); the original copyright notice is preserved in `LICENSE.md` and must stay there.

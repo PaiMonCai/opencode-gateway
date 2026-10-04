@@ -9,9 +9,31 @@ Base URL: `http://127.0.0.1:10000`. When `API_KEY` is set, `/v1/*` requests need
 | `GET` | `/health` | Health check |
 | `GET` | `/health/details` | Structured diagnostics (toggleable/auth-gated) |
 | `GET` | `/metrics` | Prometheus metrics (toggleable/auth-gated) |
-| `GET` | `/v1/models` | List models |
+| `GET` | `/v1/models` | List models (falls back to the public upstream catalogs when the runtime is unavailable) |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |
+
+## 🧭 Request headers
+
+| Header | Purpose |
+|:--|:--|
+| `Authorization` | `Bearer <API_KEY>`, required when `API_KEY` is configured |
+| `session-id` / `session_id` / `x-deepseek-harness-session-id` / `x-opencode-session` / `thread-id` / `thread_id` / `x-session-id` / `x-thread-id` / `conversation-id` / `conversation_id` / `x-conversation-id` | **Conversation identity**: the same value means the same conversation, and the middleware reuses one upstream session for it (only the appended turns are sent). The first non-empty header in that order wins; narrow the list with `OPENCODE_PROXY_SESSION_HEADERS` |
+| `X-Forwarded-For` | Part of the isolation scope when conversation identity is derived (`SESSION_DERIVE_ENABLED=true`) |
+
+With no such header the behaviour is one session per request (see the derived mode in [Configuration](./configuration.md) if you want automatic reuse).
+
+## ⬆️ Upstream selection
+
+The middleware picks the upstream per model; clients do not need to care:
+
+| Model | Upstream | Notes |
+|:--|:--|:--|
+| `opencode-go/*` | direct to `https://opencode.ai/zen/go/v1` | Go subscription; request and response bodies forwarded as-is |
+| paid `opencode/*` | direct to `https://opencode.ai/zen/v1` | pay-as-you-go Zen |
+| `opencode/*-free` (and free-tier models learned from a refusal) | local runtime | the free-tier gate cannot be satisfied by a plain HTTP client |
+
+In direct mode the upstream's status codes and bodies are relayed **verbatim** (`401 Invalid API key.`, `403 FreeTierError`, rate limits, ...); only the `model` field is rewritten to the name the client asked for. A refusal or transport failure falls back to the runtime unless `OPENCODE_PROXY_DIRECT_FALLBACK=false`.
 
 ### GET /v1/models
 
@@ -132,6 +154,8 @@ Great, now answer the original request using the tool result.
 
 ## ⚠️ Error Responses
 
+The middleware's own errors look like `{"error": {"message": ..., "type": ..., "code": ...}}`. In direct mode the upstream's native error body is relayed instead (for example `{"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}`).
+
 ### 401 Unauthorized
 
 ```json
@@ -167,3 +191,31 @@ Great, now answer the original request using the tool result.
   }
 }
 ```
+
+### 503 Service Unavailable
+
+Two conversation-related reasons:
+
+```json
+{ "error": { "message": "Conversation is busy with another request", "type": "conversation_busy" } }
+```
+
+Another request is already using this conversation and this one waited longer than the request timeout plus 60 seconds — so a wedged turn cannot pin a conversation forever.
+
+```json
+{ "error": { "message": "Could not read the session state for this conversation; retry the request", "type": "session_state_unavailable" } }
+```
+
+The session state could not be read while reusing a conversation: the previous turn's answer cannot be told apart from this one, so the turn fails instead of returning stale content. Retrying is safe.
+
+### 504 Gateway Timeout
+
+```json
+{ "error": { "message": "Request timeout", "type": "timeout", "code": "timeout" } }
+```
+
+The upstream produced nothing within `REQUEST_TIMEOUT_MS` (including non-streaming `/v1/responses`). A client that disconnects ends its turn at once and releases the conversation lock, so the next request on that conversation is unaffected.
+
+### 402 / 429
+
+Upstream quota and throttling errors map to `402 insufficient_quota` / `429 rate_limit_exceeded`.

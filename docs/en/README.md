@@ -2,6 +2,8 @@
 
 English docs. For the English intro see [README.en.md](../../README.en.md). For the Chinese intro see [README.md](../../README.md).
 
+> Positioning: the **compatibility layer between an OpenAI-compatible gateway (NewAPI, LiteLLM, one-api, ...) and OpenCode**. Clients keep speaking OpenAI; the middleware reassembles conversations, maps models, picks the upstream, and relays errors faithfully.
+
 ## 📚 Contents
 
 | Section | Description |

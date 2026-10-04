@@ -1,14 +1,16 @@
 # OpenCode Gateway
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/version-3.0.0-blue" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Node.js-18+-orange" alt="Node">
 </p>
 
 English | [简体中文](./README.md)
 
-Turns a local [OpenCode](https://opencode.ai) runtime into an OpenAI-compatible API gateway, so any client can use unlimited free OpenCode Zen models.
+**The compatibility layer between any OpenAI-compatible gateway (NewAPI, LiteLLM, one-api, ...) and [OpenCode](https://opencode.ai).**
+
+Clients keep speaking OpenAI; the middleware removes the friction between an OpenAI gateway and OpenCode: it reassembles stateless requests into OpenCode conversations (the conversation header the upstream expects, multi-turn context reuse) and normalises requests into what OpenCode accepts. Go-subscription and paid-Zen models are sent **straight** to OpenCode's OpenAI-compatible endpoints; free-tier models are served by the local runtime.
 
 ## ✨ Features
 
@@ -113,7 +115,8 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | `OPENCODE_SERVER_PASSWORD` | (empty) | OpenCode backend password |
 | `OPENCODE_PROXY_PORT` / `PORT` | `10000` | Proxy port |
 | `OPENCODE_SERVER_PORT` | `10001` | Backend port (applies when `OPENCODE_SERVER_URL` is not set) |
-| `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | Backend URL |
+| `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | Backend URL (may be unreachable in a direct-only deployment) |
+| `OPENCODE_ZEN_API_KEY` | (empty) | OpenCode account/subscription key: enables the direct path for Go and paid Zen, and is passed to the managed runtime |
 | `OPENCODE_DISABLE_TOOLS` | `true` | Disable OpenCode built-in tools |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | (empty) | Built-ins allowed when a request has no `tools`, comma-separated |
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` or `plugin-inject` |
@@ -124,6 +127,9 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | `OPENCODE_PROXY_SESSION_HEADERS` | (see docs) | Conversation identity headers, comma-separated |
 | `OPENCODE_PROXY_SESSION_DERIVE` | `false` | Infer the conversation from the request when the gateway cannot forward a header |
 | `OPENCODE_PROXY_DIRECT` | `true` | Send Go / paid Zen models straight to OpenCode's endpoints (free tier stays on the runtime) |
+| `OPENCODE_PROXY_DIRECT_GO_URL` | `https://opencode.ai/zen/go/v1` | Go subscription endpoint |
+| `OPENCODE_PROXY_DIRECT_ZEN_URL` | `https://opencode.ai/zen/v1` | Paid Zen endpoint |
+| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `true` | Keep free-tier models on the runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `true` | Fall back to the runtime when the direct upstream refuses |
 | `OPENCODE_USE_ISOLATED_HOME` | `false` | Use an isolated OpenCode config directory |
 | `OPENCODE_PROXY_DEBUG` | `false` | Debug logging |
@@ -133,8 +139,18 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 Recommended production settings:
 
 ```env
+# Auth and backend
 API_KEY=your-secret-key
 OPENCODE_SERVER_PASSWORD=your-password
+
+# Upstream credential (Go / paid Zen go direct, the free tier uses the runtime)
+OPENCODE_ZEN_API_KEY=your-opencode-key
+
+# Conversations: explicit headers when your gateway forwards them, derivation otherwise
+OPENCODE_PROXY_SESSION_REUSE=true
+OPENCODE_PROXY_SESSION_DERIVE=true
+
+# Tools and prompts
 OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject

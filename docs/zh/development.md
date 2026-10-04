@@ -38,20 +38,27 @@ docker compose logs -f
 ## 📂 项目结构
 
 ```
-OpenCode Gateway/
-├── index.js                  # 入口与配置加载
+opencode-gateway/
+├── index.js                       # 入口与配置加载（env / config.json / 启动横幅）
 ├── src/
-│   ├── proxy.js              # 核心代理逻辑
-│   └── tool-runtime/         # 工具桥接运行时（contracts/parser/policy/registry/router/validator）
+│   ├── proxy.js                   # 中间件主体：路由、会话、双上游、工具策略
+│   ├── upstream/
+│   │   └── direct-client.js       # 直连 OpenCode 端点：指纹头、SSE 回写、模型目录
+│   └── tool-runtime/              # 文本工具契约（仅 runtime 路径用：contracts/parser/policy/registry/router/validator）
+├── plugin/
+│   ├── opencode-gateway-tool-lock.js  # 后端插件：按会话标题里的策略拦截工具
+│   └── tool-lock.js                   # 全禁用版本
 ├── tests/
-│   ├── unit/                 # Jest 单元测试（npm test）
-│   ├── integration/          # Docker 集成测试
-│   └── manual/               # 真机冒烟测试，不进 CI
-├── docs/                     # 文档（zh/ + en/）
-├── entrypoint.sh             # Docker 入口脚本
+│   ├── unit/                      # Jest 单元测试（npm test）：app / session-reuse / direct-upstream / tool-lock / parser
+│   ├── integration/               # Docker 集成测试
+│   └── manual/                    # 真机冒烟测试，不进 CI
+├── docs/                          # 文档（zh/ + en/）
+├── entrypoint.sh                  # Docker 入口脚本
 ├── Dockerfile
 └── docker-compose.yml
 ```
+
+> 两条上游路径：`src/proxy.js` 里的会话层负责"同一个对话 = 同一个会话身份"，`src/upstream/direct-client.js` 负责直连；本地 runtime 只服务免费档模型。改这两处时请一起跑 `tests/unit/session-reuse.test.js` 与 `tests/unit/direct-upstream.test.js`。
 
 ## 📝 提交规范
 
@@ -68,9 +75,9 @@ chore: update build/ci
 
 ## 🔄 贡献流程
 
-1. Fork 项目并创建功能分支：`git checkout -b feature/your-feature`
-2. 提交更改，确保 `npm test` 通过
-3. 推送分支并创建 Pull Request
+1. 从 `main` 拉功能分支：`git checkout -b feature/your-feature`
+2. 提交更改，确保 `npm test` 通过（当前 197 个用例）
+3. 推送分支并创建 Pull Request；推送 `main` 会触发镜像构建（`.github/workflows/docker-publish.yml`）
 
 详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。
 

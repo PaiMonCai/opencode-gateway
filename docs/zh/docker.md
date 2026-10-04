@@ -22,14 +22,23 @@ curl -H "Authorization: Bearer $API_KEY" http://127.0.0.1:10000/v1/models
 API_KEY=change-me
 OPENCODE_SERVER_PASSWORD=change-me-too
 
+# 上游凭据：配好后 Go/付费 Zen 走直连，免费档走本地 runtime
+OPENCODE_ZEN_API_KEY=your-opencode-key
+
 # 安全
 OPENCODE_DISABLE_TOOLS=true
+
+# 会话（网关无法透传自定义头时打开推导模式）
+OPENCODE_PROXY_SESSION_REUSE=true
+OPENCODE_PROXY_SESSION_DERIVE=true
 
 # 可选
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
 OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
 ```
+
+> 镜像名默认 `ghcr.io/paimoncai/opencode-gateway:latest`；自建时改成自己的命名空间。只用 Go/付费 Zen 时可以把 `OPENCODE_SERVER_URL` 指向不可达地址（`OPENCODE_PROXY_MANAGE_BACKEND=false`），镜像里不需要跑 runtime。
 
 ## 📦 卷挂载
 

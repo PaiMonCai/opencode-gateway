@@ -1,9 +1,29 @@
 # 🚀 快速开始
 
+本项目是 **OpenAI 兼容网关 ⇄ OpenCode** 之间的兼容层：
+
+```
+本地客户端 → NewAPI / LiteLLM（可选）→ opencode-gateway → OpenCode
+```
+
+它负责消除网关与 OpenCode 之间的不兼容：把无状态的 OpenAI 请求重组成 OpenCode 能接受的会话（含上游要的会话身份头、多轮上下文复用），并按模型把请求送到最合适的上游。
+
 ## 📋 环境要求
 
 - **Docker 方式**：Docker 20.10+ 与 Docker Compose
-- **本地 Node 方式**：Node.js 18+，以及 OpenCode CLI
+- **本地 Node 方式**：Node.js 18+
+- **OpenCode CLI**：仅在需要**免费档模型**时必须（由中间件托管后端）；只用 Go 订阅 / 付费 Zen 时不需要，见下方说明
+
+## 🎯 两种上游，按需选择
+
+| 你的额度 | 需要本地 runtime 吗 | 配置 |
+|:--|:--|:--|
+| Go 订阅（`opencode-go/*`） | ❌ 不需要 | `OPENCODE_ZEN_API_KEY=<你的 key>`；`OPENCODE_PROXY_MANAGE_BACKEND=false`，`OPENCODE_SERVER_URL` 可指向不可达地址 |
+| 付费 Zen（`opencode/<付费模型>`） | ❌ 不需要 | 同上 |
+| Zen **免费档**（`opencode/*-free`） | ✅ 需要 | 安装 opencode CLI，保持 `OPENCODE_PROXY_MANAGE_BACKEND=true`（默认） |
+| 两者都要 | ✅ 需要 | 配 key + 装 CLI：付费/Go 走直连，免费档自动走 runtime |
+
+> 免费档的服务端闸门是"官方客户端身份"，普通 HTTP 客户端伪造请求头也过不去（实测 `403 FreeTierError`），所以免费档必须由 runtime 代发；其余模型直连即可，请求体原样转发、工具调用原生直通。
 
 ## 🏁 Docker 部署（推荐）
 

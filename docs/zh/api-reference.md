@@ -9,9 +9,31 @@ Base URL：`http://127.0.0.1:10000`。配置了 `API_KEY` 时，`/v1/*` 请求�
 | `GET` | `/health` | 健康检查 |
 | `GET` | `/health/details` | 结构化诊断（开关/鉴权可配置） |
 | `GET` | `/metrics` | Prometheus 指标（开关/鉴权可配置） |
-| `GET` | `/v1/models` | 模型列表 |
+| `GET` | `/v1/models` | 模型列表（runtime 不可用时改由上游公开目录提供） |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |
+
+## 🧭 请求头
+
+| 请求头 | 作用 |
+|:--|:--|
+| `Authorization` | `Bearer <API_KEY>`，配置了 `API_KEY` 时必填 |
+| `session-id` / `session_id` / `x-deepseek-harness-session-id` / `x-opencode-session` / `thread-id` / `thread_id` / `x-session-id` / `x-thread-id` / `conversation-id` / `conversation_id` / `x-conversation-id` | **会话身份**：同一个值代表同一段对话，中间件据此复用上游会话（只有新增轮次会发给上游）。按上表顺序取第一个非空值；名单可用 `OPENCODE_PROXY_SESSION_HEADERS` 收窄 |
+| `X-Forwarded-For` | 推导会话身份（`SESSION_DERIVE_ENABLED=true`）时参与隔离作用域 |
+
+不带任何会话头时，行为回到"每个请求一个会话"（如需自动复用，见[配置详解](./configuration.md)的推导模式）。
+
+## ⬆️ 上游选择
+
+中间件按模型自动决定请求发往哪里，客户端无需关心：
+
+| 模型 | 上游 | 说明 |
+|:--|:--|:--|
+| `opencode-go/*` | 直连 `https://opencode.ai/zen/go/v1` | Go 订阅额度，请求/响应体原样转发 |
+| 付费 `opencode/*` | 直连 `https://opencode.ai/zen/v1` | 按量 Zen 额度 |
+| `opencode/*-free`（及学习到的免费档模型） | 本地 runtime | 免费档闸门无法用请求头绕过 |
+
+直连模式下上游的错误码与响应体**原样回传**（例如 `401 Invalid API key.`、`403 FreeTierError`、限流等）；只有 `model` 字段会被改回客户端请求的模型名。直连被拒或网络失败时会回退 runtime（`OPENCODE_PROXY_DIRECT_FALLBACK=false` 可关闭）。
 
 ### GET /v1/models
 
@@ -132,6 +154,8 @@ Great, now answer the original request using the tool result.
 
 ## ⚠️ 错误响应
 
+中间件自身的错误形如 `{"error": {"message": ..., "type": ..., "code": ...}}`；直连上游时，上游原生错误体会原样透传（例如 `{"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}`）。
+
 ### 401 Unauthorized
 
 ```json
@@ -167,3 +191,31 @@ Great, now answer the original request using the tool result.
   }
 }
 ```
+
+### 503 Service Unavailable
+
+会话相关的两种 503：
+
+```json
+{ "error": { "message": "Conversation is busy with another request", "type": "conversation_busy" } }
+```
+
+同一段对话已有请求在处理，本次等待超过「请求超时 + 60 秒」——避免整段对话被卡死的轮次永久占住。
+
+```json
+{ "error": { "message": "Could not read the session state for this conversation; retry the request", "type": "session_state_unavailable" } }
+```
+
+复用会话时读不到会话状态：此时无法区分"上一轮的回答"和"本轮的回答"，代理宁可失败也不返回陈旧内容，重试即可。
+
+### 504 Gateway Timeout
+
+```json
+{ "error": { "message": "Request timeout", "type": "timeout", "code": "timeout" } }
+```
+
+上游在 `REQUEST_TIMEOUT_MS` 内没有产出（含 `/v1/responses` 的非流式请求）。客户端中途断开连接时，本轮会立即收尾并释放会话锁，不影响同一对话的下一次请求。
+
+### 402 / 429
+
+上游额度不足或限流时，按上游语义映射为 `402 insufficient_quota` / `429 rate_limit_exceeded`。

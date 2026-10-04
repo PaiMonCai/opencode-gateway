@@ -12,7 +12,34 @@ OPENCODE_USE_ISOLATED_HOME=false
 
 ### Free models fail with `free tier can only be used from within OpenCode`
 
-The backend is not loading the tool-lock plugin. Let the proxy start the backend (default `MANAGE_BACKEND=true`), or add `plugin/opencode-gateway-tool-lock.js` to your own backend's `plugin` config.
+Two causes — check who reported it:
+
+1. **The direct upstream returned `403 FreeTierError`** (body `{"type":"error","error":{"type":"FreeTierError",...}}`): the model belongs to the free tier, which is only served to the official client. The proxy remembers it as runtime-only and falls back to the local runtime; if you disabled `OPENCODE_PROXY_DIRECT_FALLBACK`, re-enable it. Models with the `-free` suffix already go to the runtime and never show this.
+2. **The local runtime reported it**: the backend is not loading the tool-lock plugin. Let the proxy start the backend (default `MANAGE_BACKEND=true`), or add `plugin/opencode-gateway-tool-lock.js` to your own backend's `plugin` config.
+
+### Direct mode returns `401 Invalid API key.` or quota errors
+
+```json
+{"type":"error","error":{"type":"AuthError","message":"Invalid API key."}}
+```
+
+That is the **upstream's native response**: the direct path works, but the credential is wrong or lacks entitlement. Check `OPENCODE_ZEN_API_KEY` (a Go subscription needs Go on that account; paid Zen needs credit). Keep `OPENCODE_PROXY_DIRECT_FALLBACK=true` (default) if you want an automatic runtime fallback.
+
+### Direct mode returns `ModelError: ... is not supported for format openai`
+
+The upstream `/responses` route is **per model**: some models are only offered in the `chat/completions` format. Use `POST /v1/chat/completions`, or pick a model that supports the format.
+
+### `503 conversation_busy`
+
+The previous request on this conversation has not finished (it waited longer than the request timeout plus 60 seconds). Usually a client sending several requests with one `session-id`, or a turn stuck upstream. Retry shortly; if it happens often, check whether the upstream stops responding for long stretches.
+
+### `503 session_state_unavailable`
+
+The session state could not be read while reusing a conversation, and the proxy refuses to return possibly stale content. Just retry; if it persists the backend (runtime) is unhealthy — check its logs and `/global/health`.
+
+### Usage or fields missing in direct mode
+
+In direct mode the middleware **forwards as-is**, so optional fields the upstream does not implement (for example `stream_options.include_usage`) are not synthesised. If you need strict OpenAI semantics, use a runtime-path model (a `-free` one) or wait for the upstream.
 
 ### Model not found (`model_not_found`)
 

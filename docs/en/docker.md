@@ -22,14 +22,18 @@ Common `.env` items (full list in [Configuration](./configuration.md)):
 API_KEY=change-me
 OPENCODE_SERVER_PASSWORD=change-me-too
 
-# Security
+# Upstream credential: with this set, Go and paid Zen go direct and the free tier uses the local runtime
+OPENCODE_ZEN_API_KEY=your-opencode-key
+
+# Safety
 OPENCODE_DISABLE_TOOLS=true
 
-# Optional
-OPENCODE_PROXY_PROMPT_MODE=plugin-inject
-OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
-OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
+# Conversations (enable derivation when your gateway cannot forward a custom header)
+OPENCODE_PROXY_SESSION_REUSE=true
+OPENCODE_PROXY_SESSION_DERIVE=true
 ```
+
+> The default image is `ghcr.io/paimoncai/opencode-gateway:latest`; change the namespace if you build your own. With a Go subscription or paid Zen credit only, point `OPENCODE_SERVER_URL` at an unreachable address with `OPENCODE_PROXY_MANAGE_BACKEND=false` — the image then needs no runtime.
 
 ## 📦 Volumes
 

@@ -9,7 +9,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [3.0.0] - 2026-10-04
+
+Repositioned as the compatibility layer between an OpenAI-format gateway
+(NewAPI, LiteLLM, ...) and OpenCode, and renamed to `opencode-gateway`.
+
+### Changed
+
+- **Renamed**: package, plugin file (`opencode-gateway-tool-lock.js`), session-title prefix, and the `OPENCODE_GATEWAY_*` environment prefix. The previous `OPENCODE2API_*` names still work as fallbacks, so existing deployments keep running.
+- **Positioning**: the local OpenCode runtime is no longer on the critical path — it serves the free tier, while Go and paid Zen traffic goes straight to OpenCode's own endpoints.
+- **MIT notice and upstream attribution preserved** (see `LICENSE.md`).
 
 ### Added
 
