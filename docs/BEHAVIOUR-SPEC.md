@@ -106,6 +106,14 @@ turns are all empty (for example only system messages) gives
 Keep-alive comments may be emitted while waiting. If the client disconnects the
 turn ends immediately (no further writes, conversation released).
 
+**Echo assumption (runtime path)**: the leading `assistant` messages a client
+appends to its history are treated as its echo of the previous answer and are not
+re-sent into the session. When such a message does not match the answer the
+session recorded, the proxy still skips it but logs a debug line
+(`Skipped an echoed assistant turn that does not match the session answer`, with
+`sessionId`, `messageIndex`, `expected`, `observed`, `preview`), so an operator can
+spot clients that inject assistant text the model never produced.
+
 ## 3. Responses API
 
 ### Request fields
@@ -206,6 +214,12 @@ behaviour change and needs its own changelog entry, not a silent fix.
 | provider `opencode`, model not free-tier | direct `/zen/v1` |
 | model ends with `-free`, or was learned from a `403 FreeTierError` | runtime |
 | `DIRECT_ENABLED=false` | runtime |
+
+Direct relay is **byte-faithful**: the upstream body is passed through unchanged,
+including an SSE stream whose last record carries no trailing blank line (no
+separator is synthesised) and the upstream's own status codes and error bodies.
+A model catalog refresh failure for one endpoint keeps that endpoint's previous
+list instead of dropping it.
 
 Direct mode adds exactly: `Authorization: Bearer <key>`,
 `x-opencode-session: <conversation id>`, `x-opencode-request: msg_<hex>`,
