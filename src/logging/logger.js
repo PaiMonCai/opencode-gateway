@@ -41,6 +41,26 @@ const INLINE_SECRET_PATTERNS = Object.freeze([
 ]);
 
 /**
+ * Coerce the extra-fields argument into a plain object.
+ *
+ * Call sites occasionally pass a string or an `Error` where an object is
+ * expected. Spreading those silently produced character-indexed keys
+ * (`{0:'R',1:'e',…}`) or an empty record, which is exactly the kind of log line
+ * an operator cannot use, so the shape is normalised here.
+ *
+ * @param {unknown} fields Extra fields from a call site.
+ * @returns {LogFields} Plain object that is safe to spread.
+ */
+export function asLogFields(fields) {
+    if (fields === null || fields === undefined) return {};
+    // `redact()` turns Errors into `{name, message, stack, cause}`, so keep the
+    // value itself instead of flattening it here.
+    if (fields instanceof Error) return { error: fields };
+    if (Array.isArray(fields) || typeof fields !== 'object') return { detail: fields };
+    return /** @type {LogFields} */ (fields);
+}
+
+/**
  * @typedef {object} LoggerOptions
  * @property {string | number} [level] Minimum level to emit; defaults to `info`.
  * @property {boolean} [json] JSON lines when true, human-readable when false.
@@ -163,7 +183,7 @@ export class Logger {
         /** @type {string} Scope prefix. */
         this.scope = options.scope ?? '';
         /** @type {LogFields} Fields attached to every record. */
-        this.fields = options.fields ?? {};
+        this.fields = asLogFields(options.fields);
         /** @type {number} Numeric threshold derived from {@link Logger.level}. */
         this.threshold = levelRank(this.level);
     }
@@ -181,7 +201,7 @@ export class Logger {
             json: this.json,
             stream: this.stream,
             scope: this.scope ? `${this.scope}:${scope}` : scope,
-            fields: { ...this.fields, ...fields }
+            fields: { ...this.fields, ...asLogFields(fields) }
         });
     }
 
@@ -241,7 +261,7 @@ export class Logger {
         const rank = levelRank(level);
         if (rank < this.threshold) return;
 
-        const record = redact({ ...this.fields, ...fields });
+        const record = redact({ ...this.fields, ...asLogFields(fields) });
         const line = this.json
             ? `${JSON.stringify({
                   .../** @type {Record<string, unknown>} */ (record),

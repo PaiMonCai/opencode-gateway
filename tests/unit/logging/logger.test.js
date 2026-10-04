@@ -275,3 +275,50 @@ describe('secret redaction', () => {
         expect(record.statusCode).toBe(503);
     });
 });
+
+describe('field argument shapes', () => {
+    test('keeps a string detail readable instead of splitting it into characters', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'error', json: true, stream });
+        log.error('[Proxy] API Error:', 'Request timeout after 180000ms');
+        const record = JSON.parse(stream.lines[0]);
+        expect(record.detail).toBe('Request timeout after 180000ms');
+        expect(record['0']).toBeUndefined();
+        expect(record.msg).toBe('[Proxy] API Error:');
+    });
+
+    test('serialises an Error passed as the fields argument', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'error', json: true, stream });
+        log.error('[Proxy] Error details:', new Error('boom'));
+        const record = JSON.parse(stream.lines[0]);
+        expect(record.error.message).toBe('boom');
+        expect(record.error.name).toBe('Error');
+        expect(typeof record.error.stack).toBe('string');
+    });
+
+    test('normalises numbers, booleans and arrays', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'info', json: true, stream });
+        log.info('count', 3);
+        log.info('flag', true);
+        log.info('list', ['a', 'b']);
+        expect(JSON.parse(stream.lines[0]).detail).toBe(3);
+        expect(JSON.parse(stream.lines[1]).detail).toBe(true);
+        expect(JSON.parse(stream.lines[2]).detail).toEqual(['a', 'b']);
+    });
+
+    test('tolerates a missing fields argument and keeps child fields intact', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'info', json: true, stream, fields: { scopeKey: 'x' } });
+        log.info('no fields');
+        log.child('sub', 'plain string').info('child');
+        const first = JSON.parse(stream.lines[0]);
+        expect(first.scopeKey).toBe('x');
+        expect(first.detail).toBeUndefined();
+        const second = JSON.parse(stream.lines[1]);
+        expect(second.scopeKey).toBe('x');
+        expect(second.detail).toBe('plain string');
+        expect(second.scope).toBe('sub');
+    });
+});
