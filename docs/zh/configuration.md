@@ -136,7 +136,7 @@ ALL_PROXY=socks5h://10.0.0.9:1080
 
 - **只影响上游出站**（直连 `opencode.ai` 的 chat/responses 与模型目录）；本地 runtime、健康检查、SDK 这些环回流量**永远直连**——`localhost`、`127.0.0.0/8`、`::1` 自动绕过，避免把本地调用发到外部代理；
 - `NO_PROXY`（逗号分隔，支持域名后缀如 `.example.com`、`host:port`、`*`）与上面这套绕行规则叠加生效；
-- 免费档由本地 runtime 代发，**runtime 自己的出站也要走代理**才有用：默认开启透传，会把该代理写成子进程的 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`（并附带 `NODE_USE_ENV_PROXY=1` 与含环回地址的 `NO_PROXY`）。只想让代理作用于直连上游时设 `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false`；
+- **SOCKS 代理只作用于直连上游**：runtime 是 Bun 二进制，只把 `HTTP(S)_PROXY` 当 http(s) 代理解析，把 SOCKS URL 交给它会让每一轮在 runtime 内部失败（表现为助手返回 `UnknownError`，网关侧 502）。因此 SOCKS 不会被透传，横幅会显示 `Proxy for managed runtime: No (the runtime only supports http(s) proxies)`。若 runtime 的出站也需要代理，请把 `OPENCODE_PROXY_UPSTREAM_PROXY` 指向一个 **http:// 代理**（例如 sing-box 的 mixed/http 入站端口），此时默认透传（子进程收到 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` + `NODE_USE_ENV_PROXY=1` + 含环回的 `NO_PROXY`）。只想让代理作用于直连上游时设 `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false`；
 - 只用标准 `ALL_PROXY`/`HTTPS_PROXY` 时**不会**自动透传给 runtime（子进程本来就继承容器环境，效果相同）；
 - 启动横幅只打印 `scheme://***@host:port`，**不会泄漏凭据**；非法 scheme 在启动时直接报错（fail fast）。
 

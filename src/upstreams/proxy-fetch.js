@@ -263,15 +263,38 @@ export function createUpstreamFetch({
 }
 
 /**
+ * Whether the managed OpenCode runtime can be told to use this proxy.
+ *
+ * The runtime is a Bun binary and only honours `HTTP_PROXY`/`HTTPS_PROXY`, which
+ * it parses as **http(s) proxy** URLs: exporting a `socks5h://` URL there makes
+ * every turn fail inside the runtime (observed on opencode 1.18.34: the turn
+ * answers `UnknownError` although the process is healthy). A SOCKS egress
+ * therefore applies to the direct upstream only.
+ *
+ * @param {string} proxyUrl Configured proxy URL.
+ * @returns {boolean} True when the runtime can be handed this proxy.
+ */
+export function runtimeCanUseProxy(proxyUrl) {
+    const proxy = parseProxyUrl(proxyUrl);
+    if (!proxy) return false;
+    return proxy.family === 'http';
+}
+
+/**
  * Environment variables a managed runtime needs to route its own egress through
- * the same proxy. `ALL_PROXY` covers the tools that only look at that one, and
- * `NO_PROXY` keeps the runtime's own loopback calls local.
+ * the same proxy.
+ *
+ * Returns an empty patch for a SOCKS proxy: the runtime cannot use one, and
+ * exporting the URL anyway is what broke every turn before this check existed
+ * (see {@link runtimeCanUseProxy}). `NO_PROXY` always keeps the runtime's own
+ * loopback calls local.
  *
  * @param {string} proxyUrl Proxy URL to export (credentials included).
  * @param {string|string[]} [noProxy] Operator `NO_PROXY` entries.
  * @returns {Record<string, string>} Environment patch for the child process.
  */
 export function proxyEnvForRuntime(proxyUrl, noProxy = '') {
+    if (!runtimeCanUseProxy(proxyUrl)) return {};
     const entries = [...normalizeNoProxy(noProxy), 'localhost', '127.0.0.1', '::1'];
     const unique = [...new Set(entries)].join(',');
     return {

@@ -666,10 +666,18 @@ const FIELDS = [
         type: 'boolean',
         default: true,
         description: 'Also export the upstream proxy to the managed runtime so its own egress uses it',
-        banner: (value, config) =>
-            `  - Proxy for managed runtime: ${
-                config.UPSTREAM_PROXY ? (value ? 'Yes' : 'No') : 'n/a (no proxy configured)'
-            }`
+        banner: (value, config) => {
+            if (!config.UPSTREAM_PROXY) return '  - Proxy for managed runtime: n/a (no proxy configured)';
+            if (!value) return '  - Proxy for managed runtime: No';
+            // A SOCKS proxy cannot be handed to the runtime at all: it only
+            // honours http(s) proxy URLs, and exporting a SOCKS one breaks every
+            // turn inside it.
+            return `  - Proxy for managed runtime: ${
+                parseProxyUrl(config.UPSTREAM_PROXY)?.family === 'http'
+                    ? 'Yes'
+                    : 'No (the runtime only supports http(s) proxies)'
+            }`;
+        }
     },
     {
         key: 'DEBUG',

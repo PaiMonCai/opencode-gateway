@@ -8,6 +8,7 @@ import {
     isLoopbackHost,
     normalizeNoProxy,
     proxyEnvForRuntime,
+    runtimeCanUseProxy,
     shouldBypassProxy
 } from '../../../src/upstreams/proxy-fetch.js';
 
@@ -254,15 +255,27 @@ describe('proxy URL handling', () => {
         );
     });
 
-    test('exports the proxy to a managed runtime with loopback protected', () => {
-        const env = proxyEnvForRuntime('socks5h://user:pw@proxy.test:1080', 'internal.test');
-        expect(env.ALL_PROXY).toBe('socks5h://user:pw@proxy.test:1080');
-        expect(env.HTTPS_PROXY).toBe('socks5h://user:pw@proxy.test:1080');
+    test('exports an http(s) proxy to a managed runtime with loopback protected', () => {
+        const env = proxyEnvForRuntime('http://user:pw@proxy.test:3128', 'internal.test');
+        expect(env.ALL_PROXY).toBe('http://user:pw@proxy.test:3128');
+        expect(env.HTTPS_PROXY).toBe('http://user:pw@proxy.test:3128');
         expect(env.HTTP_PROXY).toBe(env.ALL_PROXY);
         expect(env.NODE_USE_ENV_PROXY).toBe('1');
         for (const host of ['internal.test', 'localhost', '127.0.0.1', '::1']) {
             expect(env.NO_PROXY.split(',')).toContain(host);
         }
+        expect(runtimeCanUseProxy('http://proxy.test:3128')).toBe(true);
+    });
+
+    test('never hands a SOCKS proxy to the runtime', () => {
+        // The runtime is a Bun binary: it parses HTTP(S)_PROXY as an http(s)
+        // proxy, and a SOCKS URL there makes every turn fail inside it with
+        // `UnknownError` (observed on opencode 1.18.34). So nothing is exported.
+        for (const scheme of ['socks5h://p:1080', 'socks5://p:1080', 'socks4a://p:1080', 'socks4://p:1080']) {
+            expect(runtimeCanUseProxy(scheme)).toBe(false);
+            expect(proxyEnvForRuntime(scheme, 'internal.test')).toEqual({});
+        }
+        expect(runtimeCanUseProxy('')).toBe(false);
     });
 });
 

@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describeConfig } from './config/index.js';
-import { proxyEnvForRuntime } from './upstreams/proxy-fetch.js';
+import { proxyEnvForRuntime, runtimeCanUseProxy } from './upstreams/proxy-fetch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -333,6 +333,33 @@ if (process.platform !== 'win32') {
 /** @type {Map<string, BackendState>} */
 const backendState = new Map();
 
+/** Set once per process: the SOCKS warning would otherwise repeat every start. */
+let warnedAboutRuntimeProxy = false;
+
+/**
+ * Proxy environment for the managed runtime, with the one case it cannot handle
+ * reported instead of silently breaking every turn.
+ *
+ * @param {string} proxyUrl Configured upstream proxy.
+ * @param {ServerLogger|null} [logger] Logger dependency.
+ * @returns {Record<string, string>} Environment patch (empty for SOCKS).
+ */
+function runtimeProxyEnv(proxyUrl, logger = null) {
+    const patch = runtimeCanUseProxy(proxyUrl)
+        ? proxyEnvForRuntime(proxyUrl, process.env.NO_PROXY || process.env.no_proxy || '')
+        : {};
+    if (!Object.keys(patch).length && !warnedAboutRuntimeProxy) {
+        warnedAboutRuntimeProxy = true;
+        const message =
+            '[Proxy] The managed runtime cannot use a SOCKS proxy (it only honours http(s) proxies); ' +
+            'its egress stays direct. Set OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false to silence this, ' +
+            'or point OPENCODE_PROXY_UPSTREAM_PROXY at an http:// proxy if the runtime needs one too.';
+        if (logger?.warn) logger.warn(message, { proxy: proxyUrl });
+        else console.warn(message);
+    }
+    return patch;
+}
+
 // Merges the tool-lock plugin into OPENCODE_CONFIG_CONTENT for the backend the
 // proxy spawns, keeping any config the operator already passes that way.
 /**
@@ -457,9 +484,7 @@ async function ensureManagedBackend(config, logger = {}) {
             // The runtime makes its own outbound calls (the free tier cannot be
             // reached any other way), so it needs the same egress; NO_PROXY keeps
             // its loopback traffic local.
-            ...(UPSTREAM_PROXY && UPSTREAM_PROXY_FOR_RUNTIME
-                ? proxyEnvForRuntime(UPSTREAM_PROXY, process.env.NO_PROXY || process.env.no_proxy || '')
-                : {})
+            ...(UPSTREAM_PROXY && UPSTREAM_PROXY_FOR_RUNTIME ? runtimeProxyEnv(UPSTREAM_PROXY, logger) : {})
         };
 
         const isWindows = process.platform === 'win32';
