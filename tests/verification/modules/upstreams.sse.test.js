@@ -145,13 +145,12 @@ describe('rewriteSseModel over a real split stream', () => {
     });
 
     test('[FINDING-6 fixed] CRLF-framed records keep their framing and every model field is rewritten', async () => {
-        // SSE lines may legally end with CRLF (WHATWG event-stream). Today
-        // the rewriter only splits on "\n\n", so a CRLF stream is flushed as
-        // one record: only the first payload gets its model rewritten and
-        // the first record's trailing CRLF is mangled to "\n\r\n".
-        // Wrapped in `.failing` per the agreed convention: it stays green
-        // while the defect is present and must be flipped to `test` with the
-        // fix. Upstream framing is a passthrough contract (BEHAVIOUR-SPEC §5).
+        // Defect fixed during verification: SSE lines may legally end with CRLF
+        // (WHATWG event-stream), and the rewriter used to split on "\n\n" only,
+        // so a CRLF stream was flushed as one record — only the first payload
+        // kept a rewritten model and the first record's CRLF was mangled to
+        // "\n\r\n". Upstream framing is a passthrough contract (BEHAVIOUR-SPEC
+        // §5), so both properties are asserted here.
         const upstreamRecords =
             'data: {"model":"upstream-model","id":"a"}\r\n\r\n' +
             'data: {"model":"upstream-model","id":"b"}\r\n\r\n';

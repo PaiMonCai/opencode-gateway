@@ -284,6 +284,19 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** Sleep helper used by the transient-error backoff. @param {number} ms @returns {Promise<void>} */
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** Error class names that mean "this failure is ours", not the runtime's. */
+const INTERNAL_ERROR_NAMES = new Set([
+    'Error',
+    'TypeError',
+    'RangeError',
+    'ReferenceError',
+    'SyntaxError',
+    'URIError',
+    'EvalError',
+    'AggregateError',
+    'Object'
+]);
+
 /**
  * Map an upstream failure onto the OpenAI-compatible error surface.
  *
@@ -291,11 +304,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @returns {TransformedUpstreamError} Status and error body to answer with.
  */
 function transformUpstreamError(error) {
-    // Default fallback
+    // Default fallback. A failure of ours (a fetch blowing up as a TypeError, an
+    // unexpected throw) answers the documented internal-error body: echoing its
+    // message and constructor name leaked internals (`code: "TypeError"`) and
+    // broke the declared shape. A failure the runtime reported keeps its own
+    // message/code, so the client can still see why the turn failed.
+    const isInternal = !error.name || INTERNAL_ERROR_NAMES.has(error.name);
     let statusCode = 500;
-    let message = error.message || 'Internal server error';
-    let type = 'internal_error';
-    let code = error.code || error.constructor.name;
+    let message = isInternal ? 'Internal server error' : error.message || 'Internal server error';
+    let type = 'server_error';
+    let code = isInternal ? 'internal_error' : error.code || error.name || 'internal_error';
 
     // Handle timeout errors
     if (error.message && error.message.includes('Request timeout')) {

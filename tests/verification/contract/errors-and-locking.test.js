@@ -114,14 +114,14 @@ describe('§6 timeout and upstream error mapping', () => {
     });
 });
 
-test.failing('[FINDING-11] an unexpected runtime failure answers the documented 500 body', async () => {
+test('[FINDING-11 fixed] an unexpected runtime failure answers the documented 500 body', async () => {
     // api-reference documents 500 as
     // `{"message":"Internal server error","type":"server_error","code":"internal_error"}`.
-    // Observed when the runtime is unreachable (real-world evidence: the
-    // real-SDK smoke answers `{"message":"fetch failed","type":"internal_error",
-    // "code":"TypeError"}`): `transformUpstreamError` defaults to
-    // `code = error.code || error.constructor.name` and leaks the message.
-    // Pre-rewrite parity (same mapper in the monolith), hence the note.
+    // Before the fix the mapper defaulted to `code = error.code ||
+    // error.constructor.name` and leaked the message (the real-SDK smoke answered
+    // `{"message":"fetch failed","type":"internal_error","code":"TypeError"}`).
+    // Failures that are ours now answer the documented body; a failure the
+    // runtime reported keeps its own message and code (see responses.test.js).
     const { http } = await assembly({
         runtime: { promptError: () => new TypeError('fetch failed') }
     });

@@ -247,7 +247,7 @@ Our own shape: `{"error":{"message":...,"type":...,"code":...}}`.
 | 402 | `insufficient_quota` | upstream billing/credit signatures |
 | 404 | `model_not_found` | unknown model, or upstream "model not found" |
 | 429 | `rate_limit_exceeded` | upstream throttling signatures |
-| 500 | `internal_error` | unexpected failure |
+| 500 | `server_error` / `internal_error` | unexpected failure of ours (the documented api-reference body) |
 | 502 | `OpenCodeError`/`APIError` | runtime turn failed with no content |
 | 503 | `conversation_busy` | conversation lock wait exceeded (request timeout + 60s) |
 | 503 | `session_state_unavailable` | baseline snapshot failed on a reused session |

@@ -6,6 +6,7 @@
  * `previous_response_id` chaining (including the direct-upstream passthrough).
  */
 
+import { createResponseChainIndex } from '../../../src/routes/engine.js';
 import { createAssembly, createEventFactory, parseSse, promptTextOf } from './harness.js';
 
 /** @type {Array<{close: () => Promise<void>}>} */
@@ -315,6 +316,24 @@ describe('§3 failures and effort mapping', () => {
             expect(res.status).toBe(200);
             expect(res.body.reasoning.effort).toBe(expected);
         }
+    });
+});
+
+describe('§3 response-chain TTL', () => {
+    test('a chained response id expires after the documented 30 minutes', () => {
+        let now = 1_700_000_000_000;
+        const chains = createResponseChainIndex({ clock: () => now });
+        chains.store('resp_1', 'ses_1', 'opencode/big-pickle');
+
+        now += 30 * 60 * 1000 - 1;
+        expect(chains.get('resp_1')).toEqual({
+            sessionId: 'ses_1',
+            model: 'opencode/big-pickle',
+            expiresAt: expect.any(Number)
+        });
+
+        now += 1;
+        expect(chains.get('resp_1')).toBeNull();
     });
 });
 
