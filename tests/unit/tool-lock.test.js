@@ -1,7 +1,8 @@
 import request from 'supertest';
 import http from 'http';
 import { jest } from '@jest/globals';
-import { OpencodeGatewayToolLock } from '../../plugin/opencode-gateway-tool-lock.js';
+import OpencodeGatewayToolLock from '../../plugin/opencode-gateway-tool-lock.js';
+import * as pluginModule from '../../plugin/opencode-gateway-tool-lock.js';
 
 const LOCK_SPEC = 'file:///home/node/project/plugin/opencode-gateway-tool-lock.js';
 
@@ -247,6 +248,34 @@ describe('backend wiring', () => {
             await expect(checkHealth(url)).rejects.toThrow('unhealthy');
         } finally {
             server.close();
+        }
+    });
+});
+
+describe('runtime loader contract', () => {
+    test('the plugin file exports nothing but its factory', async () => {
+        // opencode 1.18 registers every function export of a plugin file as a
+        // plugin of its own; the bogus entries it creates make Plugin.trigger
+        // throw on every turn (TypeError: null is not an object), so a helper
+        // that leaks into this module breaks the whole runtime path.
+        expect(Object.keys(pluginModule)).toEqual(['default']);
+        expect(typeof pluginModule.default).toBe('function');
+    });
+
+    test('the factory returns every hook the runtime calls unconditionally', async () => {
+        const plugin = await OpencodeGatewayToolLock({
+            client: { session: { get: async () => ({ data: { title: 'opencode-gateway [tools:*]' } }) } }
+        });
+        for (const hook of [
+            'tool.execute.before',
+            'tool.execute.after',
+            'config',
+            'event',
+            'dispose',
+            'chat.message',
+            'chat.params'
+        ]) {
+            expect(typeof plugin[hook]).toBe('function');
         }
     });
 });

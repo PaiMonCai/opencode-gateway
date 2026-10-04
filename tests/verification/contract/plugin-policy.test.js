@@ -7,12 +7,13 @@
  * native `external__*` calls back to the text contract.
  */
 
-import OpencodeGatewayToolLock, {
+import OpencodeGatewayToolLock from '../../../plugin/opencode-gateway-tool-lock.js';
+import {
     denyMessage,
     externalToolMessage,
     normalizeToolName,
     parsePolicy
-} from '../../../plugin/opencode-gateway-tool-lock.js';
+} from '../../../plugin/tool-policy.js';
 import { sessionTitleForPolicy } from '../../../src/upstreams/runtime-client.js';
 
 /** @param {Record<string, {title?: string, parentID?: string}>} sessions */

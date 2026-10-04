@@ -1,9 +1,5 @@
-import OpencodeGatewayToolLock, {
-    denyMessage,
-    normalizeToolName,
-    parsePolicy,
-    toolMatches
-} from '../../../plugin/opencode-gateway-tool-lock.js';
+import OpencodeGatewayToolLock from '../../../plugin/opencode-gateway-tool-lock.js';
+import { denyMessage, normalizeToolName, parsePolicy, toolMatches } from '../../../plugin/tool-policy.js';
 import HardToolLock from '../../../plugin/tool-lock.js';
 import { sessionTitleForPolicy } from '../../../src/upstreams/runtime-client.js';
 

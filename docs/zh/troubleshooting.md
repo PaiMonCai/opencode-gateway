@@ -104,3 +104,27 @@ OPENCODE_PROXY_DEBUG=true
 ## 🆘 获取帮助
 
 - 🐛 [GitHub Issues](https://github.com/PaiMonCai/opencode-gateway/issues)
+
+### 每一轮都 500：`TypeError: null is not an object`（插件 loader 契约）
+
+现象：runtime 起来了、`/global/health` 正常、建会话也成功，但**每一轮对话都 500**（网关侧表现为卡到 `Request timeout after 180000ms`），runtime 文件日志里可以看到：
+
+```
+"plugin config hook failed" error="null is not an object (evaluating 'N.config')"
+failed error="TypeError: null is not an object (evaluating 'z[G]')"
+  at Plugin.trigger → SessionPrompt.createUserMessage → SessionPrompt.prompt
+```
+
+原因：opencode 1.18 的插件系统有两条硬要求（本项目已在 `plugin/` 里满足，改动插件时务必保持）：
+
+1. **本插件文件只能有 `default` 一个导出**。loader 会把文件里**每一个函数导出**当成独立插件注册，由此产生的坏条目会让 `Plugin.trigger` 每轮抛错。纯函数辅助放在 `plugin/tool-policy.js`（它**不能**写进 runtime 的 `plugin` 配置）。
+2. **必须返回 runtime 会调用的全部 hook**（`config`/`event`/`dispose`/`chat.message`/`chat.params`/`tool.execute.after` 以及 `tool.execute.before`）。`Plugin.trigger` 按名字取 hook 后直接调用，不会检查插件是否定义；只定义 `tool.execute.before` 会让模型还没被调用就失败。
+
+自检（不需要模型额度）：
+
+```bash
+docker exec opencode-gateway node -e "import('/home/node/project/plugin/opencode-gateway-tool-lock.js').then(async m => { const h = await m.default({client:{session:{get:async()=>({data:{title:'opencode-gateway [tools:*]'}})}}}); console.log(Object.keys(m), Object.keys(h)) })"
+# 期望： [ 'default' ] [ 'tool.execute.before', 'config', 'event', 'dispose', 'chat.message', 'chat.params', 'tool.execute.after' ]
+```
+
+若你自建后端（`MANAGE_BACKEND=false`）并手动把插件写进 `plugin` 配置，请把**插件文件本身**加进去，不要加 `tool-policy.js`。

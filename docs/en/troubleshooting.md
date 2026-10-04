@@ -104,3 +104,36 @@ Debug logs print detailed request and response info.
 ## 🆘 Get Help
 
 - 🐛 [GitHub Issues](https://github.com/PaiMonCai/opencode-gateway/issues)
+
+### Every turn answers 500 with `TypeError: null is not an object` (plugin loader contract)
+
+Symptom: the runtime is up, `/global/health` is green and sessions are created,
+yet **every turn fails** (on the gateway side it shows up as waiting until
+`Request timeout after 180000ms`), while the runtime's file log says:
+
+```
+"plugin config hook failed" error="null is not an object (evaluating 'N.config')"
+failed error="TypeError: null is not an object (evaluating 'z[G]')"
+  at Plugin.trigger → SessionPrompt.createUserMessage → SessionPrompt.prompt
+```
+
+Cause: opencode 1.18's plugin system has two hard requirements (both satisfied in
+`plugin/`; keep them when editing):
+
+1. **the plugin file may export nothing but `default`.** The loader registers
+   *every function export* as a plugin of its own, and the broken entries it
+   creates make `Plugin.trigger` throw on every turn. Pure helpers live in
+   `plugin/tool-policy.js`, which must **never** be listed in the runtime's
+   `plugin` configuration.
+2. **the plugin must return every hook the runtime calls**
+   (`config`/`event`/`dispose`/`chat.message`/`chat.params`/`tool.execute.after`
+   plus `tool.execute.before`). `Plugin.trigger` resolves a hook by name and calls
+   it without checking that it exists; defining only `tool.execute.before` fails
+   the turn before the model is reached.
+
+Self-check (needs no model credit):
+
+```bash
+docker exec opencode-gateway node -e "import('/home/node/project/plugin/opencode-gateway-tool-lock.js').then(async m => { const h = await m.default({client:{session:{get:async()=>({data:{title:'opencode-gateway [tools:*]'}})}}}); console.log(Object.keys(m), Object.keys(h)) })"
+# expect: [ 'default' ] [ 'tool.execute.before', 'config', 'event', 'dispose', 'chat.message', 'chat.params', 'tool.execute.after' ]
+```
