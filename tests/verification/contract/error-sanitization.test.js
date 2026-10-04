@@ -26,6 +26,12 @@ afterEach(async () => {
 
 const USER = { role: 'user', content: 'ping' };
 
+const assembly = async (options) => {
+    const instance = await createAssembly(options);
+    open.push(instance);
+    return instance;
+};
+
 const DOCUMENTED_500 = {
     error: {
         message: 'Internal server error',

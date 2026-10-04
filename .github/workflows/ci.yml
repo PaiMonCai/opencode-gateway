@@ -42,5 +42,5 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit tests
+      - name: Tests (unit + contract + verification)
         run: npm run test:all
