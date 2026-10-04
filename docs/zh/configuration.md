@@ -12,10 +12,10 @@
 
 ### 已收敛 / 已废弃的变量
 
-下面这些名字**仍然可用**（设置了会生效），但启动时会打印一条废弃警告并给出替代写法；它们不再出现在本页的常规表格里。
+下面这些名字**已彻底删除**：设置它们不会生效，启动时会打印一行说明并给出替代写法。它们不再出现在本页的表格里。
 
-- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`、`OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → 用 `OPENCODE_PROXY_OPS=off|health|full`
-- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`、`OPENCODE_PROXY_CLEANUP_INTERVAL_MS`、`OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → 用 `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
+- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`、`OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → **已删除**，用 `OPENCODE_PROXY_OPS=off|health|full`（两个详情端点始终要求 Bearer）
+- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`、`OPENCODE_PROXY_CLEANUP_INTERVAL_MS`、`OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → **已删除**，用 `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
 - `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` → 已移除：免费档的服务端闸门是“官方客户端身份”，**只能**由 runtime 代发，直连必然 403
 - `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` → 已移除：内部工具计数始终收集；要用 `OPENCODE_PROXY_OPS=full` 暴露 `/metrics`
 - `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` → 已移除：只有一种策略（同名工具加命名空间）

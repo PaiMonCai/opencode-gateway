@@ -333,16 +333,47 @@ describe('deprecated and removed settings', () => {
             env: { API_KEY: 'k', OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME: 'false' }
         });
         expect(config.DIRECT_FREE_VIA_RUNTIME).toBe(true);
-        expect(config.DEPRECATIONS.map((entry) => entry.name)).toContain(
+        expect(config.REMOVED_SETTINGS.map((entry) => entry.name)).toContain(
             'OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME'
         );
     });
 
-    test('a merged setting still works but points at its replacement', () => {
+    test('a removed setting is ignored and points at its replacement', () => {
         const config = loadConfig({ env: { API_KEY: 'k', OPENCODE_METRICS_ENABLED: 'true' } });
-        expect(config.METRICS_ENABLED).toBe(true);
-        const entry = config.DEPRECATIONS.find((item) => item.name === 'OPENCODE_METRICS_ENABLED');
+        // Ignored: OPS decides, and its default keeps /metrics off.
+        expect(config.METRICS_ENABLED).toBe(false);
+        const entry = config.REMOVED_SETTINGS.find((item) => item.name === 'OPENCODE_METRICS_ENABLED');
         expect(entry?.message).toContain('OPENCODE_PROXY_OPS');
+    });
+
+    test('every removed name is reported, not just ignored', () => {
+        const env = {
+            API_KEY: 'k',
+            OPENCODE_HEALTH_DETAILS_ENABLED: 'false',
+            OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'false',
+            OPENCODE_METRICS_ENABLED: 'true',
+            OPENCODE_METRICS_REQUIRE_AUTH: 'false',
+            OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS: 'true',
+            OPENCODE_PROXY_CLEANUP_INTERVAL_MS: '60000',
+            OPENCODE_PROXY_CLEANUP_MAX_AGE_MS: '60000',
+            OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME: 'false',
+            OPENCODE_INTERNAL_TOOL_METRICS_ENABLED: 'false',
+            OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY: 'rename',
+            OPENCODE_TOOL_DISCOVERY_FIXTURE: 'read'
+        };
+        const config = loadConfig({ env });
+        expect(config.REMOVED_SETTINGS.map((entry) => entry.name).sort()).toEqual(
+            Object.keys(env)
+                .filter((name) => name !== 'API_KEY')
+                .sort()
+        );
+        // None of them changes the resulting configuration.
+        expect(config.OPS).toBe('health');
+        expect(config.METRICS_ENABLED).toBe(false);
+        expect(config.HEALTH_DETAILS_ENABLED).toBe(true);
+        expect(config.STORAGE_CLEANUP).toBe('off');
+        expect(config.CLEANUP_INTERVAL_MS).toBe(43200000);
+        expect(config.DIRECT_FREE_VIA_RUNTIME).toBe(true);
     });
 
     test('the merged enums drive the legacy keys when nothing overrides them', () => {
@@ -351,15 +382,17 @@ describe('deprecated and removed settings', () => {
         const hourly = loadConfig({ env: { API_KEY: 'k', OPENCODE_PROXY_STORAGE_CLEANUP: 'hourly' } });
         expect(hourly.AUTO_CLEANUP_CONVERSATIONS).toBe(true);
         expect(hourly.CLEANUP_INTERVAL_MS).toBe(3600000);
-        expect(loadConfig({ env: { API_KEY: 'k' } }).DEPRECATIONS).toEqual([]);
+        expect(loadConfig({ env: { API_KEY: 'k' } }).REMOVED_SETTINGS).toEqual([]);
     });
 
-    test('a config.json key of a merged setting is reported too', () => {
+    test('a config.json key of a removed setting is reported and ignored', () => {
         const config = loadConfig({
             env: { API_KEY: 'k' },
-            file: { OPS: 'full', METRICS_REQUIRE_AUTH: true }
+            file: { OPS: 'full', METRICS_REQUIRE_AUTH: false }
         });
         expect(config.OPS).toBe('full');
-        expect(config.DEPRECATIONS.map((entry) => entry.source)).toContain('config.json');
+        expect(config.METRICS_REQUIRE_AUTH).toBe(true);
+        const entry = config.REMOVED_SETTINGS.find((item) => item.source === 'config.json');
+        expect(entry?.name).toContain('METRICS_REQUIRE_AUTH');
     });
 });

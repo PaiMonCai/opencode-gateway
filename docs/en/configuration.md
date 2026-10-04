@@ -23,8 +23,8 @@ These names **still work** (setting one takes effect) but print a deprecation
 warning at startup naming the replacement, and they no longer appear in the
 regular tables above.
 
-- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`, `OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → use `OPENCODE_PROXY_OPS=off|health|full`
-- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`, `OPENCODE_PROXY_CLEANUP_INTERVAL_MS`, `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → use `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
+- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`, `OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → **removed**; use `OPENCODE_PROXY_OPS=off|health|full` (both detail endpoints always require the bearer key)
+- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`, `OPENCODE_PROXY_CLEANUP_INTERVAL_MS`, `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → **removed**; use `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
 - `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` → removed: the free tier's gate is a client identity, so it can **only** be served by the runtime
 - `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` → removed: the counters are always collected; expose them with `OPENCODE_PROXY_OPS=full`
 - `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` → removed: there is one policy (same-name tools are namespaced)

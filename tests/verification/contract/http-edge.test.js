@@ -133,7 +133,9 @@ describe('§1 endpoints', () => {
 
 describe('§7 operational surfaces', () => {
     test('/health/details is 404 Not found while disabled', async () => {
-        const { http } = await assembly({ env: { OPENCODE_HEALTH_DETAILS_ENABLED: 'false' } });
+        // OPS=off is the way to switch the details endpoint off (the per-endpoint
+        // switches are removed settings).
+        const { http } = await assembly({ env: { OPENCODE_PROXY_OPS: 'off' } });
         const res = await http.get('/health/details');
         expect(res.status).toBe(404);
         expect(res.text).toBe('Not found');
@@ -142,8 +144,7 @@ describe('§7 operational surfaces', () => {
     test('/health/details answers plain-text 401 when auth is required and missing', async () => {
         const { http } = await assembly({
             env: {
-                OPENCODE_HEALTH_DETAILS_ENABLED: 'true',
-                OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'true',
+                OPENCODE_PROXY_OPS: 'health',
                 API_KEY: 'secret'
             }
         });
@@ -159,11 +160,11 @@ describe('§7 operational surfaces', () => {
     test('/health/details exposes the documented diagnostics keys', async () => {
         const { http } = await assembly({
             env: {
-                OPENCODE_HEALTH_DETAILS_ENABLED: 'true',
-                OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'false'
+                OPENCODE_PROXY_OPS: 'health',
+                API_KEY: 'k'
             }
         });
-        const res = await http.get('/health/details');
+        const res = await http.get('/health/details').set('Authorization', 'Bearer k');
         expect(res.status).toBe(200);
         expect(res.body.status).toBe('ok');
         expect(res.body.proxy).toBe(true);
@@ -198,12 +199,11 @@ describe('§7 operational surfaces', () => {
         // `/metrics` is the endpoint that decides whether they are exported).
         const { http } = await assembly({
             env: {
-                OPENCODE_HEALTH_DETAILS_ENABLED: 'true',
-                OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'false',
-                OPENCODE_PROXY_OPS: 'health'
+                OPENCODE_PROXY_OPS: 'health',
+                API_KEY: 'k'
             }
         });
-        const res = await http.get('/health/details');
+        const res = await http.get('/health/details').set('Authorization', 'Bearer k');
         expect(res.status).toBe(200);
         expect(res.body.internal_tools.metrics).toEqual(
             expect.objectContaining({
@@ -214,13 +214,13 @@ describe('§7 operational surfaces', () => {
     });
 
     test('/metrics is 404 while disabled and 401 without auth when enabled', async () => {
-        const disabled = await assembly({ env: { OPENCODE_METRICS_ENABLED: 'false' } });
+        const disabled = await assembly({ env: { OPENCODE_PROXY_OPS: 'health' } });
         const disabledRes = await disabled.http.get('/metrics');
         expect(disabledRes.status).toBe(404);
         expect(disabledRes.text).toBe('Not found');
 
         const guarded = await assembly({
-            env: { OPENCODE_METRICS_ENABLED: 'true', OPENCODE_METRICS_REQUIRE_AUTH: 'true', API_KEY: 'k' }
+            env: { OPENCODE_PROXY_OPS: 'full', API_KEY: 'k' }
         });
         const guardedRes = await guarded.http.get('/metrics');
         expect(guardedRes.status).toBe(401);
@@ -229,9 +229,9 @@ describe('§7 operational surfaces', () => {
 
     test('/metrics publishes the documented Prometheus metric names', async () => {
         const { http } = await assembly({
-            env: { OPENCODE_METRICS_ENABLED: 'true', OPENCODE_METRICS_REQUIRE_AUTH: 'false' }
+            env: { OPENCODE_PROXY_OPS: 'full', API_KEY: 'k' }
         });
-        const res = await http.get('/metrics');
+        const res = await http.get('/metrics').set('Authorization', 'Bearer k');
         expect(res.status).toBe(200);
         expect(res.headers['content-type']).toMatch(/text\/plain/);
         for (const metric of [

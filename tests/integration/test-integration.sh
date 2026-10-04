@@ -144,10 +144,7 @@ start_container() {
         --env OPENCODE_PROXY_MANAGE_BACKEND="${MANAGE_BACKEND}" \
         --env OPENCODE_INTERNAL_ALLOWED_TOOLS="web_fetch,filesystem" \
         --env OPENCODE_TOOL_DISCOVERY_FIXTURE="web_fetch,filesystem,bash" \
-        --env OPENCODE_HEALTH_DETAILS_ENABLED=true \
-        --env OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH=true \
-        --env OPENCODE_METRICS_ENABLED=true \
-        --env OPENCODE_METRICS_REQUIRE_AUTH=true \
+        --env OPENCODE_PROXY_OPS=full \
         "${IMAGE_TAG}" >/dev/null
 }
 
@@ -211,12 +208,12 @@ check_operational_auth() {
     ok "GET /metrics with a valid key"
 
     if http /health/details --fail >/dev/null 2>&1; then
-        fail "/health/details answered without a key although OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH=true"
+        fail "/health/details answered without a key although the ops endpoints require one"
     fi
     ok "GET /health/details rejects a missing key"
 
     if http /metrics --fail >/dev/null 2>&1; then
-        fail "/metrics answered without a key although OPENCODE_METRICS_REQUIRE_AUTH=true"
+        fail "/metrics answered without a key although the ops endpoints require one"
     fi
     ok "GET /metrics rejects a missing key"
 }

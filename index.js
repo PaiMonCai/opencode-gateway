@@ -23,11 +23,11 @@ const logger = createLogger({
     debug: config.DEBUG
 });
 
-// Settings a merged knob replaced stay honoured, but the operator should know:
-// one line per deprecated name, with the name to use instead.
-for (const deprecation of config.DEPRECATIONS) {
+// Settings that no longer exist are ignored, but never silently: one line per
+    // name the operator still sets, with what to use instead.
+for (const removed of config.REMOVED_SETTINGS) {
     logger.warn(
-        `[Proxy] Deprecated setting ${deprecation.name} (${deprecation.source}) — ${deprecation.message}`
+        `[Proxy] Removed setting ${removed.name} (${removed.source}) is ignored — ${removed.message}`
     );
 }
 

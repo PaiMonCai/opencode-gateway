@@ -7,7 +7,7 @@
 
 import fs from 'node:fs';
 
-import { CONFIG_FIELDS, ConfigError, collectDeprecations, coerceField, isUnset } from './schema.js';
+import { CONFIG_FIELDS, ConfigError, collectRemovedSettings, coerceField, isUnset } from './schema.js';
 
 /**
  * Where the file half of the configuration comes from.
@@ -104,6 +104,14 @@ function readFileConfig(file) {
  * @throws {ConfigError} When a provided value is invalid.
  */
 function resolveField(field, env, fileValues, partial) {
+    // A removed setting is not configurable any more: it keeps its key only so
+    // the rest of the code can read the derived value. Whatever the operator
+    // still sets is reported by `collectRemovedSettings`, never applied.
+    if (field.removed) {
+        if (typeof field.derive === 'function') return field.derive(partial);
+        return Array.isArray(field.default) ? [...field.default] : field.default;
+    }
+
     const fromEnv = firstEnvEntry(field, env);
     if (fromEnv) return coerceField(field, fromEnv.value, `environment variable ${fromEnv.name}`);
 
@@ -143,9 +151,9 @@ export function loadConfig({ env = process.env, file = null } = {}) {
         resolved[field.key] = resolveField(field, env, fileValues, resolved);
     }
 
-    // Settings the operator still uses that a merged knob replaced: reported by
-    // the entry point at startup rather than silently ignored.
-    resolved.DEPRECATIONS = collectDeprecations(env, fileValues);
+    // Settings the operator still uses that were removed: reported by the entry
+    // point at startup rather than silently ignored.
+    resolved.REMOVED_SETTINGS = collectRemovedSettings(env, fileValues);
 
     for (const [key, value] of Object.entries(resolved)) {
         if (Array.isArray(value)) resolved[key] = Object.freeze([...value]);

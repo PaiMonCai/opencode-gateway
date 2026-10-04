@@ -411,38 +411,38 @@ const FIELDS = [
     // surface: OPENCODE_PROXY_OPS is the knob to use.
     {
         key: 'HEALTH_DETAILS_ENABLED',
-        env: ['OPENCODE_HEALTH_DETAILS_ENABLED'],
+        env: [],
         fileKey: 'HEALTH_DETAILS_ENABLED',
         type: 'boolean',
         derive: (config) => config.OPS !== 'off',
-        deprecated: { replacement: 'OPENCODE_PROXY_OPS' },
+        removed: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
         description: 'Expose GET /health/details (derived from OPS)'
     },
     {
         key: 'HEALTH_DETAILS_REQUIRE_AUTH',
-        env: ['OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH'],
+        env: [],
         fileKey: 'HEALTH_DETAILS_REQUIRE_AUTH',
         type: 'boolean',
         derive: () => true,
-        deprecated: { replacement: 'OPENCODE_PROXY_OPS' },
+        removed: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
         description: 'Require bearer auth on /health/details (always on)'
     },
     {
         key: 'METRICS_ENABLED',
-        env: ['OPENCODE_METRICS_ENABLED'],
+        env: [],
         fileKey: 'METRICS_ENABLED',
         type: 'boolean',
         derive: (config) => config.OPS === 'full',
-        deprecated: { replacement: 'OPENCODE_PROXY_OPS' },
+        removed: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
         description: 'Expose GET /metrics (derived from OPS)'
     },
     {
         key: 'METRICS_REQUIRE_AUTH',
-        env: ['OPENCODE_METRICS_REQUIRE_AUTH'],
+        env: [],
         fileKey: 'METRICS_REQUIRE_AUTH',
         type: 'boolean',
         derive: () => true,
-        deprecated: { replacement: 'OPENCODE_PROXY_OPS' },
+        removed: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
         description: 'Require bearer auth on /metrics (always on)'
     },
     {
@@ -478,16 +478,16 @@ const FIELDS = [
     // set explicitly, but the enum is the documented knob.
     {
         key: 'AUTO_CLEANUP_CONVERSATIONS',
-        env: ['OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS'],
+        env: [],
         fileKey: 'AUTO_CLEANUP_CONVERSATIONS',
         type: 'boolean',
         derive: (config) => config.STORAGE_CLEANUP !== 'off',
-        deprecated: { replacement: 'OPENCODE_PROXY_STORAGE_CLEANUP' },
+        removed: 'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
         description: 'Periodically sweep stored conversations (derived from STORAGE_CLEANUP)'
     },
     {
         key: 'CLEANUP_INTERVAL_MS',
-        env: ['OPENCODE_PROXY_CLEANUP_INTERVAL_MS'],
+        env: [],
         fileKey: 'CLEANUP_INTERVAL_MS',
         type: 'integer',
         min: 0,
@@ -499,18 +499,18 @@ const FIELDS = [
                 : config.STORAGE_CLEANUP === 'daily'
                   ? 86400000
                   : 43200000,
-        deprecated: { replacement: 'OPENCODE_PROXY_STORAGE_CLEANUP' },
+        removed: 'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
         description: 'Cleanup sweep interval in ms (derived from STORAGE_CLEANUP)'
     },
     {
         key: 'CLEANUP_MAX_AGE_MS',
-        env: ['OPENCODE_PROXY_CLEANUP_MAX_AGE_MS'],
+        env: [],
         fileKey: 'CLEANUP_MAX_AGE_MS',
         type: 'integer',
         min: 0,
         default: 86400000,
         zeroMeansDefault: true,
-        deprecated: { replacement: 'OPENCODE_PROXY_STORAGE_CLEANUP' },
+        removed: 'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
         description: 'Conversation max age in ms'
     },
     {
@@ -690,28 +690,22 @@ const FIELDS = [
 export const CONFIG_FIELDS = Object.freeze(FIELDS);
 
 /**
- * Environment names that still steer a setting but are no longer documented,
- * mapped to the name that replaced them.
- *
- * @type {Readonly<Record<string, string>>}
- */
-export const DEPRECATED_ENV_NAMES = Object.freeze(
-    Object.fromEntries(
-        FIELDS.flatMap((field) =>
-            field.deprecated
-                ? (field.env || []).map((name) => [name, field.deprecated?.replacement || ''])
-                : []
-        )
-    )
-);
-
-/**
  * Environment names that no longer do anything at all, with the reason they
  * disappeared. Setting one is reported at startup and otherwise ignored.
  *
  * @type {Readonly<Record<string, string>>}
  */
 export const REMOVED_ENV_NAMES = Object.freeze({
+    OPENCODE_HEALTH_DETAILS_ENABLED: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
+    OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
+    OPENCODE_METRICS_ENABLED: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
+    OPENCODE_METRICS_REQUIRE_AUTH: 'Removed; use OPENCODE_PROXY_OPS=off|health|full instead.',
+    OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS:
+        'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
+    OPENCODE_PROXY_CLEANUP_INTERVAL_MS:
+        'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
+    OPENCODE_PROXY_CLEANUP_MAX_AGE_MS:
+        'Removed; use OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily instead.',
     OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY: 'There is only one policy: same-name tools are namespaced.',
     OPENCODE_INTERNAL_TOOL_METRICS_ENABLED:
         'Internal tool metrics are always collected; expose them with OPENCODE_PROXY_OPS=full.',
@@ -735,47 +729,28 @@ export const REMOVED_ENV_NAMES = Object.freeze({
  * @param {Record<string, unknown>} fileValues Parsed `config.json` values.
  * @returns {Deprecation[]} One entry per deprecated setting that is present.
  */
-export function collectDeprecations(env, fileValues = {}) {
+export function collectRemovedSettings(env, fileValues = {}) {
     /** @type {Deprecation[]} */
     const found = [];
 
     for (const [key, value] of Object.entries(fileValues)) {
         if (isUnset(value)) continue;
-        const replacement = DEPRECATED_FILE_KEY_REPLACEMENTS[key];
         const removed = REMOVED_FILE_KEY_NOTES[key];
-        if (replacement || removed) {
-            found.push({
-                name: `config.json key ${key}`,
-                source: 'config.json',
-                message: replacement ? `Use ${replacement}.` : (removed ?? '')
-            });
+        if (removed) {
+            found.push({ name: `config.json key ${key}`, source: 'config.json', message: removed });
         }
     }
 
     for (const [name, value] of Object.entries(env)) {
         if (isUnset(value)) continue;
-        const replacement = DEPRECATED_ENV_NAMES[name];
         const removed = REMOVED_ENV_NAMES[name];
-        if (replacement || removed) {
-            found.push({
-                name,
-                source: 'env',
-                message: replacement ? `Use ${replacement} instead.` : (removed ?? '')
-            });
+        if (removed) {
+            found.push({ name, source: 'env', message: removed });
         }
     }
 
     return found;
 }
-
-/** `config.json` keys of merged settings, mapped to the replacing key. */
-const DEPRECATED_FILE_KEY_REPLACEMENTS = Object.freeze(
-    Object.fromEntries(
-        FIELDS.flatMap((field) =>
-            field.deprecated && field.fileKey ? [[field.fileKey, field.deprecated.replacement]] : []
-        )
-    )
-);
 
 /** `config.json` keys of settings that no longer do anything. */
 const REMOVED_FILE_KEY_NOTES = Object.freeze(
@@ -826,7 +801,7 @@ const REMOVED_FILE_KEY_NOTES = Object.freeze(
  * @property {boolean} DIRECT_FALLBACK_TO_RUNTIME
  * @property {string} UPSTREAM_PROXY
  * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
- * @property {Array<{name: string, source: string, message: string}>} DEPRECATIONS
+ * @property {Array<{name: string, source: string, message: string}>} REMOVED_SETTINGS
  * @property {string} UPSTREAM_PROXY
  * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
  * @property {boolean} DEBUG
