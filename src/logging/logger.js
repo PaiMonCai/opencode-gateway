@@ -62,7 +62,10 @@ export function asLogFields(fields) {
 
 /**
  * @typedef {object} LoggerOptions
- * @property {string | number} [level] Minimum level to emit; defaults to `info`.
+ * @property {string | number} [level] Minimum level to emit; defaults to `debug`
+ *   when `debug` is true, otherwise `info`.
+ * @property {boolean} [debug] Debug mode: raises the level to `debug` and, unless
+ *   `json` says otherwise, switches to the human-readable format.
  * @property {boolean} [json] JSON lines when true, human-readable when false.
  *   Defaults to human-readable iff `OPENCODE_PROXY_DEBUG` is truthy.
  * @property {{write: (chunk: string) => unknown}} [stream] Destination; defaults to `process.stderr`.
@@ -174,10 +177,23 @@ export class Logger {
      * @param {LoggerOptions} [options] Logger options.
      */
     constructor(options = {}) {
-        /** @type {string | number} Level as configured. */
-        this.level = options.level ?? 'info';
-        /** @type {boolean} Whether records are emitted as JSON lines. */
-        this.json = options.json ?? !isDebugEnabled();
+        /**
+         * Level as configured. `debug: true` (from `OPENCODE_PROXY_DEBUG`) raises
+         * the threshold to `debug` as well: before this, the flag only switched
+         * the format and every `log.debug()` record was dropped, which made the
+         * debug diagnostics unreadable in production.
+         *
+         * @type {string | number}
+         */
+        this.level = options.level ?? (options.debug ? 'debug' : 'info');
+        /**
+         * Whether records are emitted as JSON lines. The explicit `json` option
+         * wins, then the `debug` option, then the environment flag: asking for
+         * debug output in the constructor should not silently stay in JSON.
+         *
+         * @type {boolean}
+         */
+        this.json = options.json ?? !(options.debug ?? isDebugEnabled());
         /** @type {{write: (chunk: string) => unknown}} Output sink. */
         this.stream = options.stream ?? process.stderr;
         /** @type {string} Scope prefix. */

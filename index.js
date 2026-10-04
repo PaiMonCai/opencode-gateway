@@ -17,11 +17,9 @@ import { buildRuntime } from './src/bootstrap.js';
 import { createBackendManager, printBanner, startServer } from './src/server.js';
 
 const config = loadConfig({});
-const logger = createLogger({
-    level: config.LOG_LEVEL,
-    json: config.LOG_JSON,
-    debug: config.DEBUG
-});
+// `OPENCODE_PROXY_DEBUG` selects debug level *and* the human-readable format;
+// there is no separate level/format setting.
+const logger = createLogger({ debug: config.DEBUG });
 
 // Settings that no longer exist are ignored, but never silently: one line per
     // name the operator still sets, with what to use instead.

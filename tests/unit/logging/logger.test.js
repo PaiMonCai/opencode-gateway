@@ -322,3 +322,34 @@ describe('field argument shapes', () => {
         expect(second.scope).toBe('sub');
     });
 });
+
+describe('debug flag', () => {
+    test('raises the level threshold so debug records are emitted', () => {
+        // OPENCODE_PROXY_DEBUG is the only debug switch there is: it must enable
+        // debug records, not just change the output format.
+        const stream = createStream();
+        const log = createLogger({ debug: true, stream });
+        log.debug('Conversation identity resolved', { source: 'none' });
+        expect(stream.lines).toHaveLength(1);
+        expect(stream.lines[0]).toContain('Conversation identity resolved');
+        expect(stream.lines[0]).toContain('source');
+    });
+
+    test('drops debug records when the flag is off', () => {
+        const stream = createStream();
+        const log = createLogger({ stream });
+        log.debug('Conversation identity resolved');
+        log.info('kept');
+        expect(stream.lines).toHaveLength(1);
+        expect(stream.lines[0]).toContain('kept');
+    });
+
+    test('an explicit level still wins over the flag', () => {
+        const stream = createStream();
+        const log = createLogger({ debug: true, level: 'warn', stream });
+        log.debug('dropped');
+        log.warn('kept');
+        expect(stream.lines).toHaveLength(1);
+        expect(stream.lines[0]).toContain('kept');
+    });
+});
