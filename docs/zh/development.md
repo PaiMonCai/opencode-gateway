@@ -85,7 +85,7 @@ chore: update build/ci
 ## 🔄 贡献流程
 
 1. 从 `main` 拉功能分支：`git checkout -b feature/your-feature`
-2. 提交更改，确保 `npm test` 通过（当前 197 个用例）
+2. 提交更改，确保 `npm run test:all` 通过（unit + contract + 独立验证三套）
 3. 推送分支并创建 Pull Request；推送 `main` 会触发镜像构建（`.github/workflows/docker-publish.yml`）
 
 详见 [CONTRIBUTING.md](../../CONTRIBUTING.md)。

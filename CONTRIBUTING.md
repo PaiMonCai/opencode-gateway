@@ -41,7 +41,7 @@ Please be respectful and professional. We follow the [Contributor Covenant](http
 1. Fork the repository (maintainers branch off `main` directly)
 2. Create a feature branch: `git checkout -b feature/your-feature`
 3. Make your changes
-4. Run tests: `npm test` (197 unit cases today; the conversation layer and the direct upstream each have their own suite)
+4. Run tests: `npm run test:all` (unit + contract + independent verification; the conversation layer and the direct upstream each have their own suite)
 5. Commit with clear messages (see Commit Style below)
 6. Push to your fork
 7. Submit a Pull Request
