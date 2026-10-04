@@ -43,6 +43,14 @@ import crypto from 'node:crypto';
  * @property {string} sentDigest
  */
 
+/**
+ * Observation hooks for planning. Logging only: options never change the plan.
+ *
+ * @typedef {object} PlannerOptions
+ * @property {{ debug?: Function, warn?: Function }|null} [logger]
+ * @property {string|null} [sessionId] session the plan is computed for
+ */
+
 /** Seed of the rolling prefix digest, so it can never collide with a bare hash. */
 export const PREFIX_DIGEST_SEED = 'opencode-gateway-conversation';
 
@@ -183,6 +191,45 @@ export function replyDigestFor(replyText) {
 }
 
 /**
+ * Short, log-safe rendering of an assistant message's content.
+ *
+ * @param {unknown} content
+ * @param {number} [length]
+ * @returns {string}
+ */
+function previewOf(content, length = 40) {
+    const text = typeof content === 'string' ? content : JSON.stringify(content ?? null);
+    return String(text ?? '').slice(0, length);
+}
+
+/**
+ * Report an echoed assistant message that does not match the answer the session
+ * actually produced. The echo is still skipped — that is the documented
+ * behaviour, and normal clients replay our own text — but a mismatch means a
+ * client injected an assistant message the model never produced, which silently
+ * disappears from the upstream context. Debug-level observation only.
+ *
+ * @param {ConversationEntry} entry
+ * @param {Record<string, any>|undefined} message skipped assistant message
+ * @param {number} index            index inside the delivered transcript
+ * @param {PlannerOptions} options
+ */
+function reportEchoMismatch(entry, message, index, options) {
+    const logger = options.logger;
+    if (!entry.replyDigest || !logger?.debug) return;
+    const observed = hashMessage({ role: 'assistant', content: message?.content ?? '' });
+    if (observed === entry.replyDigest) return;
+    logger.debug('Skipped an echoed assistant turn that does not match the session answer', {
+        sessionId: options.sessionId ?? entry.sessionId ?? null,
+        messageIndex: index,
+        matches: false,
+        expected: entry.replyDigest,
+        observed,
+        preview: previewOf(message?.content)
+    });
+}
+
+/**
  * Plan the turn against an existing entry.
  *
  * Reuse is only safe when the client's non-system history extends exactly what
@@ -192,9 +239,10 @@ export function replyDigestFor(replyText) {
  *
  * @param {ConversationEntry|null|undefined} entry
  * @param {Array<object>} deliverable non-system messages, in order
+ * @param {PlannerOptions} [options] observation hooks (logging only)
  * @returns {TurnPlan}
  */
-export function planConversationTurn(entry, deliverable) {
+export function planConversationTurn(entry, deliverable, options = {}) {
     const messages = Array.isArray(deliverable) ? deliverable : [];
     /** @type {TurnPlan} */
     const fresh = {
@@ -223,6 +271,7 @@ export function planConversationTurn(entry, deliverable) {
     // history instead of re-appending the echo.
     let echoed = 0;
     while (echoed < rawDelta.length && String(rawDelta[echoed]?.role || '').toLowerCase() === 'assistant') {
+        reportEchoMismatch(entry, rawDelta[echoed], entry.sentCount + echoed, options);
         echoed += 1;
     }
     if (echoed === rawDelta.length) return fresh;

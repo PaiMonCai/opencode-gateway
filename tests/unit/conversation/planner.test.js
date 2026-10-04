@@ -9,6 +9,7 @@ import {
     replyDigestFor,
     toolsFingerprintFor
 } from '../../../src/conversation/planner.js';
+import { createFakeLogger } from './helpers.js';
 
 /** A stored entry for a session that already received `count` messages. */
 const storedEntry = (messages, count, overrides = {}) => ({
@@ -261,5 +262,71 @@ describe('deliverable messages', () => {
 
     test('tolerates a missing list', () => {
         expect(deliverableMessages(undefined)).toEqual([]);
+    });
+});
+
+describe('echo observation (replyDigest)', () => {
+    const entryWithReply = (replyText) => storedEntry(history, 3, { replyDigest: replyDigestFor(replyText) });
+
+    test('records a skipped assistant turn that does not match the session answer', () => {
+        const logger = createFakeLogger();
+        const deliverable = [
+            ...history,
+            { role: 'assistant', content: 'a client-invented answer' },
+            { role: 'user', content: 'next' }
+        ];
+        const plan = planConversationTurn(entryWithReply('first answer'), deliverable, {
+            logger,
+            sessionId: 'session-1'
+        });
+
+        // Behaviour is unchanged: a leading assistant turn is still treated as
+        // an echo and skipped; the mismatch is only observed.
+        expect(plan.reuse).toBe(true);
+        expect(plan.delta).toEqual([{ role: 'user', content: 'next' }]);
+        expect(logger.records).toHaveLength(1);
+        expect(logger.records[0].level).toEqual('debug');
+        expect(logger.records[0].fields).toMatchObject({
+            sessionId: 'session-1',
+            messageIndex: 3,
+            matches: false,
+            preview: 'a client-invented answer'
+        });
+        expect(logger.records[0].fields.expected).toEqual(replyDigestFor('first answer'));
+        expect(logger.records[0].fields.observed).toEqual(
+            hashMessage({ role: 'assistant', content: 'a client-invented answer' })
+        );
+    });
+
+    test('stays quiet when the echo matches the answer the session produced', () => {
+        const logger = createFakeLogger();
+        const deliverable = [
+            ...history,
+            { role: 'assistant', content: 'first answer' },
+            { role: 'user', content: 'next' }
+        ];
+        const plan = planConversationTurn(entryWithReply('first answer'), deliverable, {
+            logger,
+            sessionId: 'session-1'
+        });
+        expect(plan.reuse).toBe(true);
+        expect(logger.records).toEqual([]);
+    });
+
+    test('stays quiet without a recorded answer and without options', () => {
+        const logger = createFakeLogger();
+        const deliverable = [
+            ...history,
+            { role: 'assistant', content: 'whatever' },
+            { role: 'user', content: 'next' }
+        ];
+        const plan = planConversationTurn(storedEntry(history, 3), deliverable, {
+            logger,
+            sessionId: 'session-1'
+        });
+        expect(plan.reuse).toBe(true);
+        expect(logger.records).toEqual([]);
+        // Options are observation only: the plan is identical without them.
+        expect(planConversationTurn(storedEntry(history, 3), deliverable)).toEqual(plan);
     });
 });

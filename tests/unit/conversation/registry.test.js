@@ -3,6 +3,7 @@ import {
     resolveConversationSettings
 } from '../../../src/conversation/registry.js';
 import { conversationScopeFor } from '../../../src/conversation/identity.js';
+import { prefixDigest } from '../../../src/conversation/planner.js';
 import { assertBaseline } from '../../../src/conversation/baseline.js';
 import {
     createFakeClock,
@@ -183,6 +184,62 @@ describe('resolveTurn — explicit conversation identity', () => {
         expect(turn.plan.reuse).toBe(false);
         expect(turn.plan.delta).toHaveLength(3);
         expect(turn.sessionId).toBeNull();
+        turn.release();
+    });
+
+    test('a queued turn re-plans from the state the lock holder left behind', async () => {
+        const { registry } = makeRegistry();
+        const headers = { 'session-id': 'conv-extended' };
+        const opening = [userMessage('Q1')];
+        const held = await registry.resolveTurn({ headers, scope: RUNTIME_SCOPE, deliverable: opening });
+        registry.storeTurn({
+            key: held.key,
+            sessionId: 'session-1',
+            mode: 'runtime',
+            plan: held.plan,
+            replyText: 'A1'
+        });
+
+        // H2 captures the current entry (sentCount 1) and queues behind the lock.
+        const queued = registry.resolveTurn({
+            headers,
+            scope: RUNTIME_SCOPE,
+            deliverable: [...opening, assistantMessage('A1'), userMessage('Q2')]
+        });
+
+        // While H2 waits, the lock holder appends Q2 to the SAME session and
+        // writes back sentCount 3 — the case a sessionId-only comparison misses.
+        const appended = [...opening, assistantMessage('A1'), userMessage('Q2')];
+        registry.storeTurn({
+            key: held.key,
+            sessionId: 'session-1',
+            mode: 'runtime',
+            plan: {
+                reuse: true,
+                rewrite: false,
+                pinned: false,
+                rotation: false,
+                delta: [assistantMessage('A1'), userMessage('Q2')],
+                deltaStartIndex: 1,
+                sentCount: 3,
+                sentDigest: prefixDigest(appended, 3)
+            },
+            replyText: 'A2'
+        });
+        held.release();
+
+        const turn = await queued;
+        // The client history did not move past the session (3 delivered, 3 held),
+        // so the turn rotates with the full history: Q2 is in the session already
+        // and must never be injected a second time.
+        expect(turn.plan.reuse).toBe(false);
+        expect(turn.plan.rewrite).toBe(true);
+        expect(turn.plan.delta).toHaveLength(3);
+        expect(turn.plan.delta.filter((message) => message.content === 'Q2')).toHaveLength(1);
+        expect(turn.plan.deltaStartIndex).toEqual(0);
+        expect(turn.sessionId).toBeNull();
+        // The caller evicts the session it can no longer reuse.
+        expect(turn.entry.sessionId).toEqual('session-1');
         turn.release();
     });
 

@@ -4,6 +4,12 @@
  * @module config
  */
 
+/**
+ * The resolved, frozen configuration object, re-exported for consumers.
+ *
+ * @typedef {import('./schema.js').Config} Config
+ */
+
 export { loadConfig } from './load.js';
 export {
     ConfigError,

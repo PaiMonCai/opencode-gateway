@@ -1,9 +1,6 @@
 import request from 'supertest';
 import { jest } from '@jest/globals';
-import { buildExternalToolRegistry } from '../../src/tool-runtime/registry.js';
-import { normalizeExternalToolChoice, buildToolExposure } from '../../src/tool-runtime/router.js';
-import { evaluateToolPolicy } from '../../src/tool-runtime/policy.js';
-import { validateToolCall, validateToolCalls } from '../../src/tool-runtime/validator.js';
+import { buildExternalToolRegistry } from '../../src/tools/registry.js';
 
 const sdkMocks = {
     configProviders: jest.fn(async () => ({
@@ -28,7 +25,8 @@ const sdkMocks = {
         data: { id: 'test-session-id' }
     })),
     sessionPrompt: jest.fn(async (args) => {
-        const promptText = args.body.prompt || args.body.parts?.map(part => part.text || '').join(' ') || '';
+        const promptText =
+            args.body.prompt || args.body.parts?.map((part) => part.text || '').join(' ') || '';
         const parts = [{ type: 'text', text: 'Mock response' }];
 
         if (promptText.includes('reasoning')) {
@@ -37,21 +35,28 @@ const sdkMocks = {
 
         return { data: { parts } };
     }),
-    sessionMessages: jest.fn(async () => ([
+    sessionMessages: jest.fn(async () => [
         {
             info: { role: 'assistant', finish: 'stop' },
-            parts: [
-                { type: 'text', text: 'Mock response' }
-            ]
+            parts: [{ type: 'text', text: 'Mock response' }]
         }
-    ])),
+    ]),
     sessionDelete: jest.fn(async () => ({})),
     eventSubscribe: jest.fn(async () => {
         const sessionId = 'test-session-id';
         const mockEvents = [
-            { type: 'message.part.updated', properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: 'Thinking...' } },
-            { type: 'message.part.updated', properties: { part: { type: 'text', sessionID: sessionId }, delta: 'Mock' } },
-            { type: 'message.part.updated', properties: { part: { type: 'text', sessionID: sessionId }, delta: ' response' } },
+            {
+                type: 'message.part.updated',
+                properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: 'Thinking...' }
+            },
+            {
+                type: 'message.part.updated',
+                properties: { part: { type: 'text', sessionID: sessionId }, delta: 'Mock' }
+            },
+            {
+                type: 'message.part.updated',
+                properties: { part: { type: 'text', sessionID: sessionId }, delta: ' response' }
+            },
             { type: 'message.updated', properties: { info: { sessionID: sessionId, finish: 'stop' } } }
         ];
 
@@ -132,7 +137,45 @@ jest.unstable_mockModule('@opencode-ai/sdk', () => ({
     }))
 }));
 
-const { createApp } = await import('../../src/proxy.js');
+// Everything that reaches the SDK must be imported dynamically, after
+// `jest.unstable_mockModule` has run.
+const sdk = await import('@opencode-ai/sdk');
+const { createApp } = await import('../../src/app.js');
+const { createConversationRegistry } = await import('../../src/conversation/index.js');
+const { createLogger } = await import('../../src/logging/index.js');
+const { createResponseChainIndex } = await import('../../src/routes/engine.js');
+const { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } =
+    await import('../../src/upstreams/index.js');
+
+/**
+ * Build an application the way `index.js` does, with the mocked SDK.
+ * The pre-rewrite suite called `createApp(config).app`; the rewrite keeps the
+ * frozen signature `buildApp({config, logger, registry, router, tools, engine})`.
+ *
+ * @param {Record<string, any>} config Gateway config.
+ * @returns {import('express').Application} Application.
+ */
+const buildApp = (config) => {
+    const logger = createLogger({ level: 'error', json: false, debug: false });
+    const runtime = createRuntimeUpstream({ config, logger, sdk });
+    const direct = createDirectUpstream({
+        config,
+        logger,
+        fetch: async () => {
+            throw new Error('direct upstream is not used in this suite');
+        }
+    });
+    const responseChains = createResponseChainIndex({ logger });
+    const registry = createConversationRegistry({
+        config,
+        logger,
+        sessionBackend: runtime,
+        deleteSession: (sessionId) => runtime.deleteSession(sessionId),
+        isSessionHeld: (sessionId) => responseChains.isHeld(sessionId)
+    });
+    const router = createUpstreamRouter({ config, logger, direct, runtime, registry });
+    return createApp({ config, logger, registry, router, responseChains, ensureBackend: async () => {} });
+};
 
 describe('Proxy OpenAI API', () => {
     let app;
@@ -146,7 +189,8 @@ describe('Proxy OpenAI API', () => {
         jest.clearAllMocks();
         sdkMocks.toolIds.mockResolvedValue({ data: ['web_fetch', 'filesystem', 'bash'] });
         sdkMocks.sessionPrompt.mockImplementation(async (args) => {
-            const promptText = args.body.prompt || args.body.parts?.map(part => part.text || '').join(' ') || '';
+            const promptText =
+                args.body.prompt || args.body.parts?.map((part) => part.text || '').join(' ') || '';
             const parts = [{ type: 'text', text: 'Mock response' }];
 
             if (promptText.includes('reasoning')) {
@@ -155,14 +199,12 @@ describe('Proxy OpenAI API', () => {
 
             return { data: { parts } };
         });
-        sdkMocks.sessionMessages.mockImplementation(async () => ([
+        sdkMocks.sessionMessages.mockImplementation(async () => [
             {
                 info: { role: 'assistant', finish: 'stop' },
-                parts: [
-                    { type: 'text', text: 'Mock response' }
-                ]
+                parts: [{ type: 'text', text: 'Mock response' }]
             }
-        ]));
+        ]);
         const config = {
             PORT: 10000,
             API_KEY: 'test-key',
@@ -171,17 +213,14 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: false,
             DEBUG: false
         };
-        const result = createApp(config);
-        app = result.app;
+        app = buildApp(config);
     });
 
     test('POST /v1/chat/completions keeps normal non-tool responses unchanged when no external tools are provided', async () => {
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
                 info: { role: 'assistant', finish: 'stop' },
-                parts: [
-                    { type: 'text', text: 'Plain assistant reply' }
-                ]
+                parts: [{ type: 'text', text: 'Plain assistant reply' }]
             }
         ]);
 
@@ -257,7 +296,9 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('External tools are virtualized by this proxy. They are not OpenCode tools.');
+        expect(promptCall.body.system).toContain(
+            'External tools are virtualized by this proxy. They are not OpenCode tools.'
+        );
         expect(promptCall.body.system).toContain('external__weather_lookup');
         expect(promptCall.body.system).toContain('client_name');
     });
@@ -313,7 +354,9 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('Use only the namespaced names listed below. Do not use original client tool names inside function calls.');
+        expect(promptCall.body.system).toContain(
+            'Use only the namespaced names listed below. Do not use original client tool names inside function calls.'
+        );
         expect(promptCall.body.system).toContain('external__web_fetch');
         expect(promptCall.body.tools).toBeUndefined();
         expect(sdkMocks.toolIds).not.toHaveBeenCalled();
@@ -368,11 +411,13 @@ describe('Proxy OpenAI API', () => {
         expect(res.body.choices[0].message.reasoning_content).toContain('The user wants the page title');
         expect(res.body.choices[0].message.tool_calls).toHaveLength(1);
         expect(res.body.choices[0].message.tool_calls[0].function.name).toEqual('web_fetch');
-        expect(JSON.parse(res.body.choices[0].message.tool_calls[0].function.arguments)).toMatchObject({ url: 'https://example.com' });
+        expect(JSON.parse(res.body.choices[0].message.tool_calls[0].function.arguments)).toMatchObject({
+            url: 'https://example.com'
+        });
     });
 
     test('POST /v1/chat/completions enables internal allowlist tools when client tools are omitted', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -380,7 +425,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem']
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -405,8 +450,12 @@ describe('Proxy OpenAI API', () => {
         });
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: web_fetch, filesystem');
-        expect(promptCall.body.system).not.toContain('External tools are virtualized by this proxy. They are not OpenCode tools.');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: web_fetch, filesystem'
+        );
+        expect(promptCall.body.system).not.toContain(
+            'External tools are virtualized by this proxy. They are not OpenCode tools.'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: true,
             filesystem: true,
@@ -416,7 +465,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/chat/completions preserves backward compatibility for INTERNAL_WEB_FETCH_ENABLED', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -424,7 +473,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_WEB_FETCH_ENABLED: true
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -443,7 +492,9 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: web_fetch');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: web_fetch'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: true,
             filesystem: false,
@@ -452,7 +503,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/chat/completions falls back to fully disabled native tools when internal allowlist tools are unavailable', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -460,7 +511,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem']
-        }).app;
+        });
         sdkMocks.toolIds.mockResolvedValueOnce({ data: ['bash'] });
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -485,7 +536,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/chat/completions applies request-level allowlist narrowing (intersection)', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -493,7 +544,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem', 'bash']
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -515,7 +566,9 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: filesystem');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: filesystem'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: false,
             filesystem: true,
@@ -524,7 +577,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/chat/completions ignores request-level allowlist when external tools are present', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -532,7 +585,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['filesystem']
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -565,7 +618,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('GET /health/details returns diagnostics when enabled and authorized', async () => {
-        const diagnosticsApp = createApp({
+        const diagnosticsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -575,7 +628,7 @@ describe('Proxy OpenAI API', () => {
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem'],
             HEALTH_DETAILS_ENABLED: true,
             HEALTH_DETAILS_REQUIRE_AUTH: true
-        }).app;
+        });
 
         const res = await request(diagnosticsApp)
             .get('/health/details')
@@ -583,17 +636,19 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.internal_tools.config.allowed_tools).toEqual(['web_fetch', 'filesystem']);
-        expect(res.body.internal_tools.audit.fields).toEqual(expect.arrayContaining([
-            'requestedAllowlist',
-            'allowedToolNames',
-            'deniedRequestedTools',
-            'resolutionPath',
-            'resultingMode'
-        ]));
+        expect(res.body.internal_tools.audit.fields).toEqual(
+            expect.arrayContaining([
+                'requestedAllowlist',
+                'allowedToolNames',
+                'deniedRequestedTools',
+                'resolutionPath',
+                'resultingMode'
+            ])
+        );
     });
 
     test('GET /health/details returns 401 when auth is required and missing', async () => {
-        const diagnosticsApp = createApp({
+        const diagnosticsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -602,14 +657,14 @@ describe('Proxy OpenAI API', () => {
             DEBUG: false,
             HEALTH_DETAILS_ENABLED: true,
             HEALTH_DETAILS_REQUIRE_AUTH: true
-        }).app;
+        });
 
         const res = await request(diagnosticsApp).get('/health/details');
         expect(res.statusCode).toEqual(401);
     });
 
     test('GET /health/details returns 404 when diagnostics are disabled', async () => {
-        const diagnosticsApp = createApp({
+        const diagnosticsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -617,14 +672,14 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             HEALTH_DETAILS_ENABLED: false
-        }).app;
+        });
 
         const res = await request(diagnosticsApp).get('/health/details');
         expect(res.statusCode).toEqual(404);
     });
 
     test('GET /metrics returns prometheus text when enabled and authorized', async () => {
-        const metricsApp = createApp({
+        const metricsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -633,11 +688,9 @@ describe('Proxy OpenAI API', () => {
             DEBUG: false,
             METRICS_ENABLED: true,
             METRICS_REQUIRE_AUTH: true
-        }).app;
+        });
 
-        const res = await request(metricsApp)
-            .get('/metrics')
-            .set('Authorization', 'Bearer test-key');
+        const res = await request(metricsApp).get('/metrics').set('Authorization', 'Bearer test-key');
 
         expect(res.statusCode).toEqual(200);
         expect(res.header['content-type']).toContain('text/plain');
@@ -646,7 +699,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('GET /metrics returns 401 when auth is required and missing', async () => {
-        const metricsApp = createApp({
+        const metricsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -655,14 +708,14 @@ describe('Proxy OpenAI API', () => {
             DEBUG: false,
             METRICS_ENABLED: true,
             METRICS_REQUIRE_AUTH: true
-        }).app;
+        });
 
         const res = await request(metricsApp).get('/metrics');
         expect(res.statusCode).toEqual(401);
     });
 
     test('GET /metrics returns 404 when metrics are disabled', async () => {
-        const metricsApp = createApp({
+        const metricsApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -670,14 +723,14 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             METRICS_ENABLED: false
-        }).app;
+        });
 
         const res = await request(metricsApp).get('/metrics');
         expect(res.statusCode).toEqual(404);
     });
 
     test('POST /v1/chat/completions request-level narrowing emits richer audit fields in diagnostics-aware runtime', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -685,7 +738,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: true,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem', 'bash']
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -707,7 +760,9 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: filesystem');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: filesystem'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: false,
             filesystem: true,
@@ -719,9 +774,7 @@ describe('Proxy OpenAI API', () => {
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
                 info: { role: 'assistant', finish: 'stop' },
-                parts: [
-                    { type: 'text', text: 'The weather in Tokyo is 22°C and sunny.' }
-                ]
+                parts: [{ type: 'text', text: 'The weather in Tokyo is 22°C and sunny.' }]
             }
         ]);
 
@@ -777,16 +830,18 @@ describe('Proxy OpenAI API', () => {
         });
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.parts).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                type: 'text',
-                text: expect.stringContaining('ASSISTANT: <function_calls>')
-            }),
-            expect.objectContaining({
-                type: 'text',
-                text: 'TOOL_RESULT: {"tool_call_id":"call_weather_1","name":"external__weather_lookup","content":"22°C and sunny"}'
-            })
-        ]));
+        expect(promptCall.body.parts).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'text',
+                    text: expect.stringContaining('ASSISTANT: <function_calls>')
+                }),
+                expect.objectContaining({
+                    type: 'text',
+                    text: 'TOOL_RESULT: {"tool_call_id":"call_weather_1","name":"external__weather_lookup","content":"22°C and sunny"}'
+                })
+            ])
+        );
         expect(promptCall.body.parts[1].text).toContain('external__weather_lookup');
         expect(promptCall.body.parts[1].text).toContain('call_weather_1');
         expect(promptCall.body.parts[1].text).toContain('{\\"city\\":\\"Tokyo\\"}');
@@ -799,9 +854,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('GET /v1/models returns model list', async () => {
-        const res = await request(app)
-            .get('/v1/models')
-            .set('Authorization', 'Bearer test-key');
+        const res = await request(app).get('/v1/models').set('Authorization', 'Bearer test-key');
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.object).toEqual('list');
@@ -850,12 +903,23 @@ describe('Proxy OpenAI API', () => {
                     type: 'message.part.updated',
                     properties: { part: { id: 'part-reasoning', type: 'reasoning', sessionID: sessionId } }
                 },
-                { type: 'message.part.delta', properties: { sessionID: sessionId, partID: 'part-reasoning', field: 'text', delta: '3+5=' } },
+                {
+                    type: 'message.part.delta',
+                    properties: {
+                        sessionID: sessionId,
+                        partID: 'part-reasoning',
+                        field: 'text',
+                        delta: '3+5='
+                    }
+                },
                 {
                     type: 'message.part.updated',
                     properties: { part: { id: 'part-text', type: 'text', sessionID: sessionId } }
                 },
-                { type: 'message.part.delta', properties: { sessionID: sessionId, partID: 'part-text', field: 'text', delta: '8' } },
+                {
+                    type: 'message.part.delta',
+                    properties: { sessionID: sessionId, partID: 'part-text', field: 'text', delta: '8' }
+                },
                 { type: 'message.updated', properties: { info: { sessionID: sessionId, finish: 'stop' } } }
             ];
             return {
@@ -883,8 +947,14 @@ describe('Proxy OpenAI API', () => {
             const delta = json.choices?.[0]?.delta;
             if (delta) deltas.push(delta);
         }
-        const reasoning = deltas.filter((d) => d.reasoning_content).map((d) => d.reasoning_content).join('');
-        const content = deltas.filter((d) => d.content).map((d) => d.content).join('');
+        const reasoning = deltas
+            .filter((d) => d.reasoning_content)
+            .map((d) => d.reasoning_content)
+            .join('');
+        const content = deltas
+            .filter((d) => d.content)
+            .map((d) => d.content)
+            .join('');
         expect(reasoning).toContain('3+5=');
         expect(content).toContain('8');
         expect(content).not.toContain('3+5=');
@@ -898,8 +968,14 @@ describe('Proxy OpenAI API', () => {
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             const sessionId = 'test-session-id';
             const mockEvents = [
-                { type: 'message.part.updated', properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: 'Let me think: ' } },
-                { type: 'message.part.updated', properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: '8' } },
+                {
+                    type: 'message.part.updated',
+                    properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: 'Let me think: ' }
+                },
+                {
+                    type: 'message.part.updated',
+                    properties: { part: { type: 'reasoning', sessionID: sessionId }, delta: '8' }
+                },
                 { type: 'message.updated', properties: { info: { sessionID: sessionId, finish: 'stop' } } }
             ];
             return {
@@ -936,8 +1012,14 @@ describe('Proxy OpenAI API', () => {
             const delta = json.choices?.[0]?.delta;
             if (delta) deltas.push(delta);
         }
-        const reasoning = deltas.filter((d) => d.reasoning_content).map((d) => d.reasoning_content).join('');
-        const content = deltas.filter((d) => d.content).map((d) => d.content).join('');
+        const reasoning = deltas
+            .filter((d) => d.reasoning_content)
+            .map((d) => d.reasoning_content)
+            .join('');
+        const content = deltas
+            .filter((d) => d.content)
+            .map((d) => d.content)
+            .join('');
         expect(reasoning).toContain('Let me think');
         // The answer must still reach the client even though the stream tagged it as reasoning.
         expect(content).toContain('8');
@@ -963,7 +1045,15 @@ describe('Proxy OpenAI API', () => {
                             finish: 'stop',
                             parts: [
                                 { type: 'text', text: 'I need to search. ' },
-                                { type: 'tool', id: 'call_internal_1', tool: 'web_fetch', state: { status: 'pending', input: { url: 'https://example.com/weather' } } }
+                                {
+                                    type: 'tool',
+                                    id: 'call_internal_1',
+                                    tool: 'web_fetch',
+                                    state: {
+                                        status: 'pending',
+                                        input: { url: 'https://example.com/weather' }
+                                    }
+                                }
                             ]
                         }
                     }
@@ -979,7 +1069,16 @@ describe('Proxy OpenAI API', () => {
                             sessionID: sessionId,
                             finish: 'stop',
                             parts: [
-                                { type: 'tool', id: 'call_internal_1', tool: 'web_fetch', state: { status: 'completed', input: { url: 'https://example.com/weather' }, output: '14C' } },
+                                {
+                                    type: 'tool',
+                                    id: 'call_internal_1',
+                                    tool: 'web_fetch',
+                                    state: {
+                                        status: 'completed',
+                                        input: { url: 'https://example.com/weather' },
+                                        output: '14C'
+                                    }
+                                },
                                 { type: 'text', text: 'The weather is 14C.' }
                             ]
                         }
@@ -1007,11 +1106,12 @@ describe('Proxy OpenAI API', () => {
         expect(res.statusCode).toEqual(200);
         expect(res.text).toContain('data: [DONE]');
 
-        const chunks = res.text.split('\n').filter(l => l.startsWith('data:') && !l.includes('[DONE]'));
+        const chunks = res.text.split('\n').filter((l) => l.startsWith('data:') && !l.includes('[DONE]'));
         let streamed = '';
         for (const line of chunks) {
             const json = JSON.parse(line.slice(5).trim());
-            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+            const delta =
+                json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
             if (delta) streamed += delta;
         }
         // The full answer must be streamed, not just the planning text.
@@ -1027,18 +1127,22 @@ describe('Proxy OpenAI API', () => {
         sdkMocks.sessionMessages.mockImplementation(async () => {
             call += 1;
             if (call < 3) {
-                return [{
-                    info: { role: 'assistant' },
-                    parts: [{ type: 'reasoning', text: 'Let me read the file.' }]
-                }];
+                return [
+                    {
+                        info: { role: 'assistant' },
+                        parts: [{ type: 'reasoning', text: 'Let me read the file.' }]
+                    }
+                ];
             }
-            return [{
-                info: { role: 'assistant', finish: 'stop' },
-                parts: [
-                    { type: 'reasoning', text: 'Let me read the file.' },
-                    { type: 'text', text: 'The file says hello.' }
-                ]
-            }];
+            return [
+                {
+                    info: { role: 'assistant', finish: 'stop' },
+                    parts: [
+                        { type: 'reasoning', text: 'Let me read the file.' },
+                        { type: 'text', text: 'The file says hello.' }
+                    ]
+                }
+            ];
         });
         // Force the polling fallback: the event stream yields nothing usable.
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
@@ -1073,15 +1177,19 @@ describe('Proxy OpenAI API', () => {
         sdkMocks.sessionMessages.mockImplementation(async () => {
             call += 1;
             if (call < 2) {
-                return [{
-                    info: { role: 'assistant', finish: 'tool' },
-                    parts: [{ type: 'text', text: 'Calling a tool. ' }]
-                }];
+                return [
+                    {
+                        info: { role: 'assistant', finish: 'tool' },
+                        parts: [{ type: 'text', text: 'Calling a tool. ' }]
+                    }
+                ];
             }
-            return [{
-                info: { role: 'assistant', finish: 'stop' },
-                parts: [{ type: 'text', text: 'Calling a tool. Done: 42.' }]
-            }];
+            return [
+                {
+                    info: { role: 'assistant', finish: 'stop' },
+                    parts: [{ type: 'text', text: 'Calling a tool. Done: 42.' }]
+                }
+            ];
         });
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             throw new Error('event stream unavailable');
@@ -1110,22 +1218,24 @@ describe('Proxy OpenAI API', () => {
     test('polling fallback returns the last partial snapshot when the timeout is reached', async () => {
         // If the message never reports completion, the partial text still beats throwing a
         // timeout error and losing everything the model produced.
-        sdkMocks.sessionMessages.mockImplementation(async () => ([{
-            info: { role: 'assistant' },
-            parts: [{ type: 'text', text: 'Partial answer that never completes' }]
-        }]));
+        sdkMocks.sessionMessages.mockImplementation(async () => [
+            {
+                info: { role: 'assistant' },
+                parts: [{ type: 'text', text: 'Partial answer that never completes' }]
+            }
+        ]);
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             throw new Error('event stream unavailable');
         });
 
-        const shortTimeoutApp = createApp({
+        const shortTimeoutApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
             REQUEST_TIMEOUT_MS: 1200,
             DISABLE_TOOLS: false,
             DEBUG: false
-        }).app;
+        });
 
         const res = await request(shortTimeoutApp)
             .post('/v1/chat/completions')
@@ -1145,25 +1255,32 @@ describe('Proxy OpenAI API', () => {
         // sit through the entire first-delta timeout before polling rediscovered the error.
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             const sessionId = 'test-session-id';
-            const mockEvents = [{
-                type: 'message.updated',
-                properties: {
-                    info: {
-                        sessionID: sessionId,
-                        error: { name: 'MessageAbortedError', data: { message: 'Aborted' } }
+            const mockEvents = [
+                {
+                    type: 'message.updated',
+                    properties: {
+                        info: {
+                            sessionID: sessionId,
+                            error: { name: 'MessageAbortedError', data: { message: 'Aborted' } }
+                        }
                     }
                 }
-            }];
+            ];
             return {
                 stream: (async function* () {
                     for (const event of mockEvents) yield event;
                 })()
             };
         });
-        sdkMocks.sessionMessages.mockImplementation(async () => ([{
-            info: { role: 'assistant', error: { name: 'MessageAbortedError', data: { message: 'Aborted' } } },
-            parts: []
-        }]));
+        sdkMocks.sessionMessages.mockImplementation(async () => [
+            {
+                info: {
+                    role: 'assistant',
+                    error: { name: 'MessageAbortedError', data: { message: 'Aborted' } }
+                },
+                parts: []
+            }
+        ]);
 
         const startedAt = Date.now();
         const res = await request(app)
@@ -1214,8 +1331,14 @@ describe('Proxy OpenAI API', () => {
             const delta = json.choices?.[0]?.delta;
             if (delta) deltas.push(delta);
         }
-        const reasoning = deltas.filter((d) => d.reasoning_content).map((d) => d.reasoning_content).join('');
-        const content = deltas.filter((d) => d.content).map((d) => d.content).join('');
+        const reasoning = deltas
+            .filter((d) => d.reasoning_content)
+            .map((d) => d.reasoning_content)
+            .join('');
+        const content = deltas
+            .filter((d) => d.content)
+            .map((d) => d.content)
+            .join('');
         expect(reasoning).toContain('Thinking');
         expect(content).toContain('Mock response');
         // Reasoning and answer must never bleed into each other.
@@ -1334,7 +1457,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/chat/completions strips denied external tool calls from non-stream output', async () => {
-        const restrictedApp = createApp({
+        const restrictedApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1342,7 +1465,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: false,
             DEBUG: false,
             EXTERNAL_TOOL_DENYLIST: ['delete_ticket']
-        }).app;
+        });
 
         sdkMocks.sessionMessages.mockResolvedValueOnce([
             {
@@ -1385,13 +1508,10 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses returns assistant response', async () => {
-        const res = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({
-                model: 'opencode/kimi-k2.5',
-                input: 'Hello from responses'
-            });
+        const res = await request(app).post('/v1/responses').set('Authorization', 'Bearer test-key').send({
+            model: 'opencode/kimi-k2.5',
+            input: 'Hello from responses'
+        });
 
         expect(res.statusCode).toEqual(200);
         expect(res.body.object).toEqual('response');
@@ -1413,14 +1533,11 @@ describe('Proxy OpenAI API', () => {
             throw new Error('event stream unavailable');
         });
 
-        const res = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({
-                model: 'opencode/kimi-k2.5',
-                input: 'Hello',
-                stream: true
-            });
+        const res = await request(app).post('/v1/responses').set('Authorization', 'Bearer test-key').send({
+            model: 'opencode/kimi-k2.5',
+            input: 'Hello',
+            stream: true
+        });
 
         // Headers were already flushed as SSE, so the status stays 200 and the failure is
         // reported as a stream event. The important part is that no exception escapes.
@@ -1507,7 +1624,9 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('External tools are virtualized by this proxy. They are not OpenCode tools.');
+        expect(promptCall.body.system).toContain(
+            'External tools are virtualized by this proxy. They are not OpenCode tools.'
+        );
         expect(promptCall.body.system).toContain('external__weather_lookup');
         expect(promptCall.body.system).toContain('client_name');
     });
@@ -1561,14 +1680,16 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('Use only the namespaced names listed below. Do not use original client tool names inside function calls.');
+        expect(promptCall.body.system).toContain(
+            'Use only the namespaced names listed below. Do not use original client tool names inside function calls.'
+        );
         expect(promptCall.body.system).toContain('external__web_fetch');
         expect(promptCall.body.tools).toBeUndefined();
         expect(sdkMocks.toolIds).not.toHaveBeenCalled();
     });
 
     test('POST /v1/responses enables internal allowlist tools when client tools are omitted', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1576,7 +1697,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem']
-        }).app;
+        });
 
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -1608,8 +1729,12 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: web_fetch, filesystem');
-        expect(promptCall.body.system).not.toContain('External tools are virtualized by this proxy. They are not OpenCode tools.');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: web_fetch, filesystem'
+        );
+        expect(promptCall.body.system).not.toContain(
+            'External tools are virtualized by this proxy. They are not OpenCode tools.'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: true,
             filesystem: true,
@@ -1619,7 +1744,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses preserves backward compatibility for INTERNAL_WEB_FETCH_ENABLED', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1627,7 +1752,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_WEB_FETCH_ENABLED: true
-        }).app;
+        });
 
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -1645,7 +1770,9 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: web_fetch');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: web_fetch'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: true,
             filesystem: false,
@@ -1654,7 +1781,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses falls back to fully disabled native tools when internal allowlist tools are unavailable', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1662,7 +1789,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem']
-        }).app;
+        });
         sdkMocks.toolIds.mockResolvedValueOnce({ data: ['bash'] });
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -1686,7 +1813,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses applies request-level allowlist narrowing (intersection)', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1694,7 +1821,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'filesystem', 'bash']
-        }).app;
+        });
 
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -1715,7 +1842,9 @@ describe('Proxy OpenAI API', () => {
 
         expect(res.statusCode).toEqual(200);
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.system).toContain('You may use only these built-in tools when truly required: filesystem');
+        expect(promptCall.body.system).toContain(
+            'You may use only these built-in tools when truly required: filesystem'
+        );
         expect(promptCall.body.tools).toEqual({
             web_fetch: false,
             filesystem: true,
@@ -1724,7 +1853,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses ignores request-level allowlist when external tools are present', async () => {
-        const internalApp = createApp({
+        const internalApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1732,7 +1861,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: true,
             DEBUG: false,
             INTERNAL_ALLOWED_TOOLS: ['filesystem']
-        }).app;
+        });
 
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -1766,9 +1895,7 @@ describe('Proxy OpenAI API', () => {
     test('POST /v1/responses continues after function_call_output input and returns assistant text', async () => {
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
-                parts: [
-                    { type: 'text', text: 'The weather in Tokyo is 22°C and sunny.' }
-                ]
+                parts: [{ type: 'text', text: 'The weather in Tokyo is 22°C and sunny.' }]
             }
         });
 
@@ -1795,9 +1922,7 @@ describe('Proxy OpenAI API', () => {
                     {
                         type: 'message',
                         role: 'user',
-                        content: [
-                            { type: 'input_text', text: 'What is the weather in Tokyo?' }
-                        ]
+                        content: [{ type: 'input_text', text: 'What is the weather in Tokyo?' }]
                     },
                     {
                         type: 'function_call',
@@ -1830,20 +1955,22 @@ describe('Proxy OpenAI API', () => {
         ]);
 
         const promptCall = sdkMocks.sessionPrompt.mock.calls.at(-1)?.[0];
-        expect(promptCall.body.parts).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                type: 'text',
-                text: 'What is the weather in Tokyo?'
-            }),
-            expect.objectContaining({
-                type: 'text',
-                text: expect.stringContaining('ASSISTANT: <function_calls>')
-            }),
-            expect.objectContaining({
-                type: 'text',
-                text: 'TOOL_RESULT: {"tool_call_id":"resp_call_weather_1","name":"external__weather_lookup","content":"22°C and sunny"}'
-            })
-        ]));
+        expect(promptCall.body.parts).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({
+                    type: 'text',
+                    text: 'What is the weather in Tokyo?'
+                }),
+                expect.objectContaining({
+                    type: 'text',
+                    text: expect.stringContaining('ASSISTANT: <function_calls>')
+                }),
+                expect.objectContaining({
+                    type: 'text',
+                    text: 'TOOL_RESULT: {"tool_call_id":"resp_call_weather_1","name":"external__weather_lookup","content":"22°C and sunny"}'
+                })
+            ])
+        );
         expect(promptCall.body.parts[1].text).toContain('external__weather_lookup');
         expect(promptCall.body.parts[1].text).toContain('resp_call_weather_1');
         expect(promptCall.body.parts[1].text).toContain('{\\"city\\":\\"Tokyo\\"}');
@@ -1862,14 +1989,11 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses supports streaming', async () => {
-        const res = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({
-                model: 'opencode/kimi-k2.5',
-                input: 'Hello from responses stream',
-                stream: true
-            });
+        const res = await request(app).post('/v1/responses').set('Authorization', 'Bearer test-key').send({
+            model: 'opencode/kimi-k2.5',
+            input: 'Hello from responses stream',
+            stream: true
+        });
 
         expect(res.statusCode).toEqual(200);
         expect(res.header['content-type']).toContain('text/event-stream');
@@ -1943,7 +2067,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses strips denied external function calls from streaming output', async () => {
-        const restrictedApp = createApp({
+        const restrictedApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -1951,7 +2075,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: false,
             DEBUG: false,
             EXTERNAL_TOOL_DENYLIST: ['delete_ticket']
-        }).app;
+        });
 
         sdkMocks.eventSubscribe.mockResolvedValueOnce({
             stream: (async function* () {
@@ -1999,7 +2123,7 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('POST /v1/responses strips denied external function calls from non-stream output', async () => {
-        const restrictedApp = createApp({
+        const restrictedApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -2007,7 +2131,7 @@ describe('Proxy OpenAI API', () => {
             DISABLE_TOOLS: false,
             DEBUG: false,
             EXTERNAL_TOOL_DENYLIST: ['delete_ticket']
-        }).app;
+        });
 
         sdkMocks.sessionPrompt.mockResolvedValueOnce({
             data: {
@@ -2053,12 +2177,14 @@ describe('Proxy OpenAI API', () => {
      * no tool-call markup is parsed back out, so the model appears to ignore tools entirely.
      */
     test('external tool registry accepts flat Responses-API tool definitions', () => {
-        const flat = buildExternalToolRegistry([{
-            type: 'function',
-            name: 'read',
-            description: 'Read a file',
-            parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] }
-        }]);
+        const flat = buildExternalToolRegistry([
+            {
+                type: 'function',
+                name: 'read',
+                description: 'Read a file',
+                parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] }
+            }
+        ]);
 
         expect(flat).toHaveLength(1);
         expect(flat[0].originalName).toBe('read');
@@ -2070,14 +2196,20 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('external tool registry keeps accepting nested Chat-Completions tool definitions', () => {
-        const nested = buildExternalToolRegistry([{
-            type: 'function',
-            function: {
-                name: 'read',
-                description: 'Read a file',
-                parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] }
+        const nested = buildExternalToolRegistry([
+            {
+                type: 'function',
+                function: {
+                    name: 'read',
+                    description: 'Read a file',
+                    parameters: {
+                        type: 'object',
+                        properties: { path: { type: 'string' } },
+                        required: ['path']
+                    }
+                }
             }
-        }]);
+        ]);
 
         expect(nested).toHaveLength(1);
         expect(nested[0].namespacedName).toBe('external__read');
@@ -2090,10 +2222,12 @@ describe('Proxy OpenAI API', () => {
             sentSystem = args.body.system || '';
             return {
                 data: {
-                    parts: [{
-                        type: 'text',
-                        text: '<function_calls>{"name":"external__read","arguments":{"path":"a.txt"}}</function_calls>'
-                    }]
+                    parts: [
+                        {
+                            type: 'text',
+                            text: '<function_calls>{"name":"external__read","arguments":{"path":"a.txt"}}</function_calls>'
+                        }
+                    ]
                 }
             };
         });
@@ -2104,18 +2238,24 @@ describe('Proxy OpenAI API', () => {
             .send({
                 model: 'opencode/kimi-k2.5',
                 input: 'Read a.txt',
-                tools: [{
-                    type: 'function',
-                    name: 'read',
-                    description: 'Read a file',
-                    parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] }
-                }]
+                tools: [
+                    {
+                        type: 'function',
+                        name: 'read',
+                        description: 'Read a file',
+                        parameters: {
+                            type: 'object',
+                            properties: { path: { type: 'string' } },
+                            required: ['path']
+                        }
+                    }
+                ]
             });
 
         expect(res.statusCode).toEqual(200);
         // The tool contract must reach the model.
         expect(sentSystem).toContain('external__read');
-        const functionCalls = res.body.output.filter(item => item.type === 'function_call');
+        const functionCalls = res.body.output.filter((item) => item.type === 'function_call');
         expect(functionCalls).toHaveLength(1);
         expect(functionCalls[0].name).toBe('read');
         expect(JSON.parse(functionCalls[0].arguments)).toEqual({ path: 'a.txt' });
@@ -2127,10 +2267,12 @@ describe('Proxy OpenAI API', () => {
             sentSystem = args.body.system || '';
             return {
                 data: {
-                    parts: [{
-                        type: 'text',
-                        text: '<function_calls>{"name":"external__read","arguments":{"path":"a.txt"}}</function_calls>'
-                    }]
+                    parts: [
+                        {
+                            type: 'text',
+                            text: '<function_calls>{"name":"external__read","arguments":{"path":"a.txt"}}</function_calls>'
+                        }
+                    ]
                 }
             };
         });
@@ -2141,11 +2283,17 @@ describe('Proxy OpenAI API', () => {
             .send({
                 model: 'opencode/kimi-k2.5',
                 input: 'Read a.txt',
-                tools: [{
-                    type: 'function',
-                    name: 'read',
-                    parameters: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] }
-                }],
+                tools: [
+                    {
+                        type: 'function',
+                        name: 'read',
+                        parameters: {
+                            type: 'object',
+                            properties: { path: { type: 'string' } },
+                            required: ['path']
+                        }
+                    }
+                ],
                 tool_choice: { type: 'function', name: 'read' }
             });
 
@@ -2158,22 +2306,32 @@ describe('Proxy OpenAI API', () => {
         // (CreditsError). The very next attempt succeeds, so the proxy must rotate the
         // session and retry instead of surfacing the bogus billing error.
         sdkMocks.sessionMessages.mockReset();
-        sdkMocks.sessionMessages.mockImplementation(async () => ([{
-            info: { role: 'assistant', finish: 'stop' },
-            parts: [{ type: 'text', text: 'Recovered response' }]
-        }]));
+        sdkMocks.sessionMessages.mockImplementation(async () => [
+            {
+                info: { role: 'assistant', finish: 'stop' },
+                parts: [{ type: 'text', text: 'Recovered response' }]
+            }
+        ]);
         sdkMocks.eventSubscribe.mockReset();
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             const sessionId = 'test-session-id';
-            const mockEvents = [{
-                type: 'message.updated',
-                properties: {
-                    info: {
-                        sessionID: sessionId,
-                        error: { name: 'CreditsError', data: { message: '401: {"message":"Insufficient balance. Manage your billing here: https://example.ai","type":"CreditsError","param":"","code":null}' } }
+            const mockEvents = [
+                {
+                    type: 'message.updated',
+                    properties: {
+                        info: {
+                            sessionID: sessionId,
+                            error: {
+                                name: 'CreditsError',
+                                data: {
+                                    message:
+                                        '401: {"message":"Insufficient balance. Manage your billing here: https://example.ai","type":"CreditsError","param":"","code":null}'
+                                }
+                            }
+                        }
                     }
                 }
-            }];
+            ];
             return {
                 stream: (async function* () {
                     for (const event of mockEvents) yield event;
@@ -2203,17 +2361,21 @@ describe('Proxy OpenAI API', () => {
         // CreditsError with no usable content, the retry succeeds.
         sdkMocks.sessionMessages.mockReset();
         sdkMocks.sessionMessages
-            .mockResolvedValueOnce([{
-                info: {
-                    role: 'assistant',
-                    error: { name: 'CreditsError', data: { message: '401: Insufficient balance' } }
-                },
-                parts: []
-            }])
-            .mockResolvedValue([{
-                info: { role: 'assistant', finish: 'stop' },
-                parts: [{ type: 'text', text: 'Recovered response' }]
-            }]);
+            .mockResolvedValueOnce([
+                {
+                    info: {
+                        role: 'assistant',
+                        error: { name: 'CreditsError', data: { message: '401: Insufficient balance' } }
+                    },
+                    parts: []
+                }
+            ])
+            .mockResolvedValue([
+                {
+                    info: { role: 'assistant', finish: 'stop' },
+                    parts: [{ type: 'text', text: 'Recovered response' }]
+                }
+            ]);
         sdkMocks.eventSubscribe.mockReset();
 
         const res = await request(app)
@@ -2229,54 +2391,54 @@ describe('Proxy OpenAI API', () => {
         expect(res.body.choices[0].message.content).toBe('Recovered response');
         expect(sdkMocks.sessionDelete).toHaveBeenCalledWith({ path: { id: 'test-session-id' } });
     });
-describe('Proxy Responses API previous_response_id', () => {
-    test('chains follow-up turns onto the stored session without recreating it', async () => {
-        sdkMocks.sessionMessages.mockReset();
-        sdkMocks.sessionMessages.mockResolvedValue([
-            {
-                info: { role: 'assistant', finish: 'stop' },
-                parts: [{ type: 'text', text: 'Mock response' }]
-            }
-        ]);
-        sdkMocks.eventSubscribe.mockReset();
-        sdkMocks.sessionCreate.mockClear();
-        sdkMocks.sessionDelete.mockClear();
-        sdkMocks.configUpdate.mockClear();
+    describe('Proxy Responses API previous_response_id', () => {
+        test('chains follow-up turns onto the stored session without recreating it', async () => {
+            sdkMocks.sessionMessages.mockReset();
+            sdkMocks.sessionMessages.mockResolvedValue([
+                {
+                    info: { role: 'assistant', finish: 'stop' },
+                    parts: [{ type: 'text', text: 'Mock response' }]
+                }
+            ]);
+            sdkMocks.eventSubscribe.mockReset();
+            sdkMocks.sessionCreate.mockClear();
+            sdkMocks.sessionDelete.mockClear();
+            sdkMocks.configUpdate.mockClear();
 
-        const first = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({ model: 'opencode/kimi-k2.5', input: 'Hello' });
+            const first = await request(app)
+                .post('/v1/responses')
+                .set('Authorization', 'Bearer test-key')
+                .send({ model: 'opencode/kimi-k2.5', input: 'Hello' });
 
-        expect(first.statusCode).toEqual(200);
-        expect(first.body.id).toMatch(/^resp_/);
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledTimes(1);
+            expect(first.statusCode).toEqual(200);
+            expect(first.body.id).toMatch(/^resp_/);
+            expect(sdkMocks.sessionCreate).toHaveBeenCalledTimes(1);
 
-        const followUp = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({
-                input: 'And a follow-up question',
-                previous_response_id: first.body.id
-            });
+            const followUp = await request(app)
+                .post('/v1/responses')
+                .set('Authorization', 'Bearer test-key')
+                .send({
+                    input: 'And a follow-up question',
+                    previous_response_id: first.body.id
+                });
 
-        expect(followUp.statusCode).toEqual(200);
-        // The stored OpenCode session is reused; no new session, no teardown.
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledTimes(1);
-        expect(sdkMocks.sessionDelete).not.toHaveBeenCalled();
-        // Model falls back to the one recorded with the previous response.
-        const lastUpdate = sdkMocks.configUpdate.mock.calls.at(-1)?.[0];
-        expect(lastUpdate?.body?.activeModel).toEqual({ providerID: 'opencode', modelID: 'kimi-k2.5' });
+            expect(followUp.statusCode).toEqual(200);
+            // The stored OpenCode session is reused; no new session, no teardown.
+            expect(sdkMocks.sessionCreate).toHaveBeenCalledTimes(1);
+            expect(sdkMocks.sessionDelete).not.toHaveBeenCalled();
+            // Model falls back to the one recorded with the previous response.
+            const lastUpdate = sdkMocks.configUpdate.mock.calls.at(-1)?.[0];
+            expect(lastUpdate?.body?.activeModel).toEqual({ providerID: 'opencode', modelID: 'kimi-k2.5' });
+        });
+
+        test('rejects an invalid previous_response_id', async () => {
+            const res = await request(app)
+                .post('/v1/responses')
+                .set('Authorization', 'Bearer test-key')
+                .send({ input: 'Hello', previous_response_id: 'resp_does-not-exist' });
+
+            expect(res.statusCode).toEqual(400);
+            expect(res.body.error.message).toContain('previous_response_id');
+        });
     });
-
-    test('rejects an invalid previous_response_id', async () => {
-        const res = await request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .send({ input: 'Hello', previous_response_id: 'resp_does-not-exist' });
-
-        expect(res.statusCode).toEqual(400);
-        expect(res.body.error.message).toContain('previous_response_id');
-    });
-});
 });

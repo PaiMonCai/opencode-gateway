@@ -1,10 +1,18 @@
-node_modules
-.DS_Store
+# Dependencies
+node_modules/
+
+# Local configuration and secrets. `config.json.example` and `.env.example`
+# stay tracked on purpose.
+config.json
+.env
+
+# Test and build output
+coverage/
+*.tsbuildinfo
+
+# Logs
 *.log
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.env
-config.json
-coverage
-*.tsbuildinfo
+
+# Editor / OS noise
+.DS_Store

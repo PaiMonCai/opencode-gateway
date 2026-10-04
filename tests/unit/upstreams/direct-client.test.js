@@ -169,6 +169,76 @@ describe('rewriteSseModel', () => {
 
         expect(output).toBe('data: {"model":"opencode/x","choices":[]}\n\n');
     });
+
+    test('flushes a truncated tail record without synthesizing a separator', async () => {
+        const input = 'data: {"model":"bare","choices":[]}';
+
+        const output = await collectText(rewriteSseModel(streamOf(input), 'opencode/x'));
+
+        expect(output).toBe('data: {"model":"opencode/x","choices":[]}');
+        expect(output.endsWith('\n\n')).toBe(false);
+    });
+
+    test('rewrites every record of a CRLF stream and keeps the separator bytes', async () => {
+        const input = 'data: {"model":"up-1","id":"a"}\r\n\r\n' + 'data: {"model":"up-2","id":"b"}\r\n\r\n';
+
+        const output = await collectText(rewriteSseModel(streamOf(input), 'opencode/asked'));
+
+        // Both records rewritten, `\r\n\r\n` preserved byte-for-byte.
+        expect(output).toBe(
+            'data: {"model":"opencode/asked","id":"a"}\r\n\r\n' +
+                'data: {"model":"opencode/asked","id":"b"}\r\n\r\n'
+        );
+        expect(output).not.toContain('"model":"up-');
+    });
+
+    test('rewrites a single CRLF record without altering its framing', async () => {
+        const input = 'data: {"model":"up-1","id":"a"}\r\n\r\n';
+
+        const output = await collectText(rewriteSseModel(streamOf(input), 'opencode/asked'));
+
+        expect(output).toBe('data: {"model":"opencode/asked","id":"a"}\r\n\r\n');
+    });
+
+    test('handles a mixed LF, CRLF and CR stream', async () => {
+        const input =
+            'data: {"model":"up-1"}\n\n' + 'data: {"model":"up-2"}\r\n\r\n' + 'data: {"model":"up-3"}\r\r';
+
+        const output = await collectText(rewriteSseModel(streamOf(input), 'opencode/asked'));
+
+        expect(output).toBe(
+            'data: {"model":"opencode/asked"}\n\n' +
+                'data: {"model":"opencode/asked"}\r\n\r\n' +
+                'data: {"model":"opencode/asked"}\r\r'
+        );
+    });
+
+    test('buffers a CRLF separator split across chunk boundaries', async () => {
+        const chunks = ['data: {"model":"up-1"}\r\n\r', '\ndata: {"model":"up-2"}\r\n\r\n'];
+        const stream = (async function* split() {
+            for (const chunk of chunks) yield Buffer.from(chunk, 'utf8');
+        })();
+
+        const output = await collectText(rewriteSseModel(stream, 'opencode/asked'));
+
+        expect(output).toBe(
+            'data: {"model":"opencode/asked"}\r\n\r\n' + 'data: {"model":"opencode/asked"}\r\n\r\n'
+        );
+    });
+
+    test('preserves the exact trailing bytes of a tail record', async () => {
+        const output = await collectText(rewriteSseModel(streamOf('data: {"model":"bare"}\n'), 'opencode/x'));
+
+        expect(output).toBe('data: {"model":"opencode/x"}\n');
+    });
+
+    test('keeps the framing of a completed record ending with a single blank line', async () => {
+        const output = await collectText(
+            rewriteSseModel(streamOf('data: {"model":"bare"}\n\n'), 'opencode/x')
+        );
+
+        expect(output).toBe('data: {"model":"opencode/x"}\n\n');
+    });
 });
 
 describe('collectSseDeltaText / extractAssistantText', () => {
@@ -394,6 +464,36 @@ describe('createDirectUpstream', () => {
             expect(relayed).toContain('"model":"opencode/big-pickle"');
             expect(relayed).not.toContain('"model":"bare"');
             expect(relayed).toContain('data: [DONE]\n\n');
+        } finally {
+            await stub.close();
+        }
+    });
+
+    test('relays an upstream stream that ends without a blank line byte-for-byte', async () => {
+        const upstreamBytes =
+            'data: {"model":"bare","choices":[{"delta":{"content":"hi"}}]}\n\n' +
+            'data: {"model":"bare","choices":[],"usage":{"total_tokens":1}}';
+        const stub = await startStub((_req, res) => {
+            res.writeHead(200, { 'content-type': 'text/event-stream' });
+            res.end(upstreamBytes);
+        });
+        try {
+            const direct = createDirectUpstream({
+                config: { ZEN_API_KEY: 'key', DIRECT_ZEN_BASE_URL: stub.baseUrl }
+            });
+
+            const response = await direct.chatCompletion({
+                providerID: 'opencode',
+                modelID: 'big-pickle',
+                body: { messages: [] },
+                stream: true,
+                sessionId: 'ses_1'
+            });
+            const relayed = await collectText(rewriteSseModel(response.body, 'opencode/big-pickle'));
+
+            // Only the model names change; the missing blank line is not filled in.
+            expect(relayed).toBe(upstreamBytes.replaceAll('"model":"bare"', '"model":"opencode/big-pickle"'));
+            expect(relayed.endsWith('"usage":{"total_tokens":1}}')).toBe(true);
         } finally {
             await stub.close();
         }

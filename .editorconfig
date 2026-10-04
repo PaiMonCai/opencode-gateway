@@ -1,4 +1,5 @@
-# EditorConfig helps maintain consistent coding styles
+# Editor behaviour for this repository. Prettier (see .prettierrc) owns the
+# actual formatting; these settings keep every editor in the same ballpark.
 # https://editorconfig.org
 
 root = true
@@ -9,20 +10,23 @@ end_of_line = lf
 insert_final_newline = true
 trim_trailing_whitespace = true
 
-[*.{js,jsx,ts,tsx,json}]
+# JavaScript, JSON and friends: four spaces, the project's style.
+[*.{js,mjs,cjs,jsx,ts,tsx,json,jsonc}]
 indent_style = space
 indent_size = 4
 
-[*.md]
-trim_trailing_whitespace = false
+# Shell scripts and YAML read better with their own widths.
+[*.sh]
+indent_style = space
+indent_size = 4
 
 [*.{yml,yaml}]
 indent_style = space
 indent_size = 2
 
-[*.sh]
-indent_style = space
-indent_size = 4
+# Markdown keeps trailing spaces, they are meaningful line breaks.
+[*.md]
+trim_trailing_whitespace = false
 
 [Makefile]
 indent_style = tab

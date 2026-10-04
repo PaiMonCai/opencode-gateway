@@ -27,17 +27,20 @@ const resetSdkState = () => {
 const sdkMocks = {
     configProviders: jest.fn(async () => ({
         data: {
-            providers: [{
-                id: 'opencode',
-                models: {
-                    'kimi-k2.5': { name: 'Kimi k2.5' },
-                    'big-pickle': { name: 'Big Pickle' },
-                    'big-pickle-free': { name: 'Big Pickle Free' }
+            providers: [
+                {
+                    id: 'opencode',
+                    models: {
+                        'kimi-k2.5': { name: 'Kimi k2.5' },
+                        'big-pickle': { name: 'Big Pickle' },
+                        'big-pickle-free': { name: 'Big Pickle Free' }
+                    }
+                },
+                {
+                    id: 'opencode-go',
+                    models: { 'kimi-k3': { name: 'Kimi k3' } }
                 }
-            }, {
-                id: 'opencode-go',
-                models: { 'kimi-k3': { name: 'Kimi k3' } }
-            }]
+            ]
         }
     })),
     configUpdate: jest.fn(async () => ({})),
@@ -56,50 +59,70 @@ const sdkMocks = {
         sdkState.prompts.push({ sessionId: id, parts: args?.body?.parts || [] });
         const reply = 'runtime reply';
         session.push({
-            info: { id: `msg-assistant-${id}`, role: 'assistant', sessionID: id, finish: 'stop', time: { created: Date.now(), completed: Date.now() } },
+            info: {
+                id: `msg-assistant-${id}`,
+                role: 'assistant',
+                sessionID: id,
+                finish: 'stop',
+                time: { created: Date.now(), completed: Date.now() }
+            },
             parts: [{ type: 'text', text: reply }]
         });
         return { data: { parts: [{ type: 'text', text: reply }] } };
     }),
-    sessionMessages: jest.fn(async (args) => (sdkState.sessions.get(args?.path?.id) || []).map((entry) => ({
-        info: { ...entry.info },
-        parts: [...entry.parts]
-    }))),
+    sessionMessages: jest.fn(async (args) =>
+        (sdkState.sessions.get(args?.path?.id) || []).map((entry) => ({
+            info: { ...entry.info },
+            parts: [...entry.parts]
+        }))
+    ),
     sessionDelete: jest.fn(async () => ({})),
     eventSubscribe: jest.fn(async () => ({ stream: (async function* () {})() }))
 };
 
 jest.unstable_mockModule('https', () => ({
-    default: { get: jest.fn((url, options, callback) => {
-        const res = { statusCode: 200, headers: {}, on: jest.fn((event, handler) => {
-            if (event === 'data') handler(Buffer.from(''));
-            if (event === 'end') handler();
-        }) };
-        callback(res);
-        return { on: jest.fn(), destroy: jest.fn() };
-    }) }
+    default: {
+        get: jest.fn((url, options, callback) => {
+            const res = {
+                statusCode: 200,
+                headers: {},
+                on: jest.fn((event, handler) => {
+                    if (event === 'data') handler(Buffer.from(''));
+                    if (event === 'end') handler();
+                })
+            };
+            callback(res);
+            return { on: jest.fn(), destroy: jest.fn() };
+        })
+    }
 }));
 
 jest.unstable_mockModule('http', () => ({
-    default: { get: jest.fn((url, options, callback) => {
-        const response = {
-            statusCode: 200,
-            headers: {},
-            resume: jest.fn(),
-            setEncoding: jest.fn(),
-            on: jest.fn((event, handler) => {
-                if (event === 'data') handler('{"healthy":true}');
-                if (event === 'end') handler();
-            })
-        };
-        callback(response);
-        return { on: jest.fn(), destroy: jest.fn(), setTimeout: jest.fn() };
-    }) }
+    default: {
+        get: jest.fn((url, options, callback) => {
+            const response = {
+                statusCode: 200,
+                headers: {},
+                resume: jest.fn(),
+                setEncoding: jest.fn(),
+                on: jest.fn((event, handler) => {
+                    if (event === 'data') handler('{"healthy":true}');
+                    if (event === 'end') handler();
+                })
+            };
+            callback(response);
+            return { on: jest.fn(), destroy: jest.fn(), setTimeout: jest.fn() };
+        })
+    }
 }));
 
 jest.unstable_mockModule('@opencode-ai/sdk', () => ({
     createOpencodeClient: jest.fn(() => ({
-        config: { providers: sdkMocks.configProviders, update: sdkMocks.configUpdate, get: sdkMocks.configGet },
+        config: {
+            providers: sdkMocks.configProviders,
+            update: sdkMocks.configUpdate,
+            get: sdkMocks.configGet
+        },
         tool: { ids: sdkMocks.toolIds },
         session: {
             create: sdkMocks.sessionCreate,
@@ -112,16 +135,59 @@ jest.unstable_mockModule('@opencode-ai/sdk', () => ({
 }));
 
 const httpServer = http; // the real module, captured before jest replaces 'http'
-const { createApp } = await import('../../src/proxy.js');
+// Everything that reaches the SDK must be imported dynamically, after
+// `jest.unstable_mockModule` has run.
+const sdk = await import('@opencode-ai/sdk');
+const { createApp } = await import('../../src/app.js');
+const { createConversationRegistry } = await import('../../src/conversation/index.js');
+const { createLogger } = await import('../../src/logging/index.js');
+const { createResponseChainIndex } = await import('../../src/routes/engine.js');
+const { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } =
+    await import('../../src/upstreams/index.js');
+
+/**
+ * Build an application the way `index.js` does, with the mocked SDK. The
+ * pre-rewrite suite called `createApp(config).app`; the rewrite keeps the frozen
+ * signature `buildApp({config, logger, registry, router, tools, engine})`.
+ *
+ * @param {Record<string, any>} config Gateway config.
+ * @returns {import('express').Application} Application.
+ */
+const buildApp = (config) => {
+    const logger = createLogger({ level: 'error', json: false, debug: false });
+    const runtime = createRuntimeUpstream({ config, logger, sdk });
+    const direct = createDirectUpstream({
+        config,
+        logger,
+        fetch: (...args) => globalThis.fetch(...args)
+    });
+    const responseChains = createResponseChainIndex({ logger });
+    const registry = createConversationRegistry({
+        config,
+        logger,
+        sessionBackend: runtime,
+        deleteSession: (sessionId) => runtime.deleteSession(sessionId),
+        isSessionHeld: (sessionId) => responseChains.isHeld(sessionId)
+    });
+    const router = createUpstreamRouter({ config, logger, direct, runtime, registry });
+    return createApp({ config, logger, registry, router, responseChains, ensureBackend: async () => {} });
+};
 
 /** Stub upstream: records every request and answers from a per-test handler. */
 const startStubUpstream = async (handler) => {
     const calls = [];
     const server = httpServer.createServer((req, res) => {
         let body = '';
-        req.on('data', (chunk) => { body += chunk; });
+        req.on('data', (chunk) => {
+            body += chunk;
+        });
         req.on('end', () => {
-            const record = { method: req.method, url: req.url, headers: req.headers, body: body ? JSON.parse(body) : null };
+            const record = {
+                method: req.method,
+                url: req.url,
+                headers: req.headers,
+                body: body ? JSON.parse(body) : null
+            };
             calls.push(record);
             handler(record, res);
         });
@@ -137,32 +203,43 @@ const startStubUpstream = async (handler) => {
 
 const jsonReply = (record, res, payload) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(payload ?? {
-        id: 'chatcmpl-upstream',
-        object: 'chat.completion',
-        created: 1,
-        model: record.body.model,
-        choices: [{ index: 0, message: { role: 'assistant', content: 'direct reply' }, finish_reason: 'stop' }],
-        usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 }
-    }));
+    res.end(
+        JSON.stringify(
+            payload ?? {
+                id: 'chatcmpl-upstream',
+                object: 'chat.completion',
+                created: 1,
+                model: record.body.model,
+                choices: [
+                    {
+                        index: 0,
+                        message: { role: 'assistant', content: 'direct reply' },
+                        finish_reason: 'stop'
+                    }
+                ],
+                usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 }
+            }
+        )
+    );
 };
 
 describe('direct upstream mode', () => {
     let upstream;
     let app;
 
-    const makeApp = (overrides = {}) => createApp({
-        PORT: 10000,
-        API_KEY: 'test-key',
-        OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
-        REQUEST_TIMEOUT_MS: 2000,
-        DISABLE_TOOLS: false,
-        DEBUG: false,
-        ZEN_API_KEY: 'upstream-key',
-        DIRECT_GO_BASE_URL: `${upstream.baseUrl}/zen/go/v1`,
-        DIRECT_ZEN_BASE_URL: `${upstream.baseUrl}/zen/v1`,
-        ...overrides
-    }).app;
+    const makeApp = (overrides = {}) =>
+        buildApp({
+            PORT: 10000,
+            API_KEY: 'test-key',
+            OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
+            REQUEST_TIMEOUT_MS: 2000,
+            DISABLE_TOOLS: false,
+            DEBUG: false,
+            ZEN_API_KEY: 'upstream-key',
+            DIRECT_GO_BASE_URL: `${upstream.baseUrl}/zen/go/v1`,
+            DIRECT_ZEN_BASE_URL: `${upstream.baseUrl}/zen/v1`,
+            ...overrides
+        });
 
     beforeEach(async () => {
         jest.clearAllMocks();
@@ -170,7 +247,12 @@ describe('direct upstream mode', () => {
         upstream = await startStubUpstream((record, res) => {
             if (record.url.endsWith('/models')) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ object: 'list', data: [{ id: 'stub-model', name: 'Stub Model', created: 1 }] }));
+                res.end(
+                    JSON.stringify({
+                        object: 'list',
+                        data: [{ id: 'stub-model', name: 'Stub Model', created: 1 }]
+                    })
+                );
                 return;
             }
             jsonReply(record, res);
@@ -211,25 +293,37 @@ describe('direct upstream mode', () => {
     });
 
     test('passes tools through natively instead of bridging them', async () => {
-        const tools = [{
-            type: 'function',
-            function: { name: 'web_fetch', description: 'fetch', parameters: { type: 'object', properties: {} } }
-        }];
+        const tools = [
+            {
+                type: 'function',
+                function: {
+                    name: 'web_fetch',
+                    description: 'fetch',
+                    parameters: { type: 'object', properties: {} }
+                }
+            }
+        ];
         await request(app)
             .post('/v1/chat/completions')
             .set('Authorization', 'Bearer test-key')
-            .send({ model: 'opencode-go/kimi-k3', messages: [{ role: 'user', content: 'go' }], tools, tool_choice: 'auto' });
+            .send({
+                model: 'opencode-go/kimi-k3',
+                messages: [{ role: 'user', content: 'go' }],
+                tools,
+                tool_choice: 'auto'
+            });
 
         expect(upstream.calls[0].body.tools).toEqual(tools);
         expect(upstream.calls[0].body.tool_choice).toEqual('auto');
     });
 
     test('keeps one conversation on one upstream session, and separates conversations', async () => {
-        const send = (sessionHeader) => request(app)
-            .post('/v1/chat/completions')
-            .set('Authorization', 'Bearer test-key')
-            .set('session-id', sessionHeader)
-            .send({ model: 'opencode-go/kimi-k3', messages: [{ role: 'user', content: 'hello' }] });
+        const send = (sessionHeader) =>
+            request(app)
+                .post('/v1/chat/completions')
+                .set('Authorization', 'Bearer test-key')
+                .set('session-id', sessionHeader)
+                .send({ model: 'opencode-go/kimi-k3', messages: [{ role: 'user', content: 'hello' }] });
 
         await send('conversation-a');
         await send('conversation-a');
@@ -255,7 +349,9 @@ describe('direct upstream mode', () => {
         await upstream.close();
         upstream = await startStubUpstream((record, res) => {
             res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Invalid API key.' } }));
+            res.end(
+                JSON.stringify({ type: 'error', error: { type: 'AuthError', message: 'Invalid API key.' } })
+            );
         });
         app = makeApp();
 
@@ -292,12 +388,13 @@ describe('direct upstream mode', () => {
         upstream = await startStubUpstream((record, res) => {
             if (!record.body?.stream) return jsonReply(record, res);
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-            const chunk = (delta) => `data: ${JSON.stringify({
-                id: 'chatcmpl-upstream',
-                object: 'chat.completion.chunk',
-                model: record.body.model,
-                choices: [{ index: 0, delta, finish_reason: null }]
-            })}\n\n`;
+            const chunk = (delta) =>
+                `data: ${JSON.stringify({
+                    id: 'chatcmpl-upstream',
+                    object: 'chat.completion.chunk',
+                    model: record.body.model,
+                    choices: [{ index: 0, delta, finish_reason: null }]
+                })}\n\n`;
             res.write(chunk({ role: 'assistant', content: 'di' }));
             res.write(chunk({ content: 'rect' }));
             res.write('data: [DONE]\n\n');
@@ -348,7 +445,7 @@ describe('direct upstream mode', () => {
             res.writeHead(401, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: { message: 'Invalid API key.' } }));
         });
-        const strictApp = createApp({
+        const strictApp = buildApp({
             PORT: 10000,
             API_KEY: 'test-key',
             OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
@@ -358,7 +455,7 @@ describe('direct upstream mode', () => {
             DIRECT_FALLBACK_TO_RUNTIME: false,
             DIRECT_GO_BASE_URL: `${upstream.baseUrl}/zen/go/v1`,
             DIRECT_ZEN_BASE_URL: `${upstream.baseUrl}/zen/v1`
-        }).app;
+        });
         const rejected = await request(strictApp)
             .post('/v1/chat/completions')
             .set('Authorization', 'Bearer test-key')
@@ -385,32 +482,37 @@ describe('responses, free-tier learning and the model catalog', () => {
     let upstream;
     let app;
 
-    const makeApp = (overrides = {}) => createApp({
-        PORT: 10000,
-        API_KEY: 'test-key',
-        OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
-        REQUEST_TIMEOUT_MS: 2000,
-        DISABLE_TOOLS: false,
-        DEBUG: false,
-        ZEN_API_KEY: 'upstream-key',
-        DIRECT_GO_BASE_URL: `${upstream.baseUrl}/zen/go/v1`,
-        DIRECT_ZEN_BASE_URL: `${upstream.baseUrl}/zen/v1`,
-        ...overrides
-    }).app;
+    const makeApp = (overrides = {}) =>
+        buildApp({
+            PORT: 10000,
+            API_KEY: 'test-key',
+            OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
+            REQUEST_TIMEOUT_MS: 2000,
+            DISABLE_TOOLS: false,
+            DEBUG: false,
+            ZEN_API_KEY: 'upstream-key',
+            DIRECT_GO_BASE_URL: `${upstream.baseUrl}/zen/go/v1`,
+            DIRECT_ZEN_BASE_URL: `${upstream.baseUrl}/zen/v1`,
+            ...overrides
+        });
 
     const responsesReply = (record, res) => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-            id: 'resp_upstream',
-            object: 'response',
-            created_at: 1,
-            model: record.body.model,
-            output: [{
-                type: 'message',
-                role: 'assistant',
-                content: [{ type: 'output_text', text: 'responses answer' }]
-            }]
-        }));
+        res.end(
+            JSON.stringify({
+                id: 'resp_upstream',
+                object: 'response',
+                created_at: 1,
+                model: record.body.model,
+                output: [
+                    {
+                        type: 'message',
+                        role: 'assistant',
+                        content: [{ type: 'output_text', text: 'responses answer' }]
+                    }
+                ]
+            })
+        );
     };
 
     beforeEach(async () => {
@@ -419,7 +521,12 @@ describe('responses, free-tier learning and the model catalog', () => {
         upstream = await startStubUpstream((record, res) => {
             if (record.url.endsWith('/models')) {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ object: 'list', data: [{ id: 'stub-model', name: 'Stub Model', created: 1 }] }));
+                res.end(
+                    JSON.stringify({
+                        object: 'list',
+                        data: [{ id: 'stub-model', name: 'Stub Model', created: 1 }]
+                    })
+                );
                 return;
             }
             if (record.url.endsWith('/responses')) return responsesReply(record, res);
@@ -433,11 +540,12 @@ describe('responses, free-tier learning and the model catalog', () => {
     });
 
     test('passes /v1/responses straight through and keeps the conversation header', async () => {
-        const send = () => request(app)
-            .post('/v1/responses')
-            .set('Authorization', 'Bearer test-key')
-            .set('session-id', 'resp-conversation')
-            .send({ model: 'opencode-go/kimi-k3', input: 'hello' });
+        const send = () =>
+            request(app)
+                .post('/v1/responses')
+                .set('Authorization', 'Bearer test-key')
+                .set('session-id', 'resp-conversation')
+                .send({ model: 'opencode-go/kimi-k3', input: 'hello' });
 
         const first = await send();
         expect(first.statusCode).toEqual(200);
@@ -454,18 +562,24 @@ describe('responses, free-tier learning and the model catalog', () => {
 
         const second = await send();
         expect(second.statusCode).toEqual(200);
-        expect(upstream.calls[1].headers['x-opencode-session'])
-            .toEqual(upstream.calls[0].headers['x-opencode-session']);
+        expect(upstream.calls[1].headers['x-opencode-session']).toEqual(
+            upstream.calls[0].headers['x-opencode-session']
+        );
     });
 
     test('learns that an unsuffixed free model belongs to the runtime', async () => {
         await upstream.close();
         upstream = await startStubUpstream((record, res) => {
             res.writeHead(403, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-                type: 'error',
-                error: { type: 'FreeTierError', message: "OpenCode's free tier can only be used from within OpenCode" }
-            }));
+            res.end(
+                JSON.stringify({
+                    type: 'error',
+                    error: {
+                        type: 'FreeTierError',
+                        message: "OpenCode's free tier can only be used from within OpenCode"
+                    }
+                })
+            );
         });
         app = makeApp();
 
@@ -508,9 +622,7 @@ describe('responses, free-tier learning and the model catalog', () => {
     test('publishes the upstream catalog when the runtime cannot list models', async () => {
         sdkMocks.configProviders.mockRejectedValueOnce(new Error('runtime unavailable'));
 
-        const res = await request(app)
-            .get('/v1/models')
-            .set('Authorization', 'Bearer test-key');
+        const res = await request(app).get('/v1/models').set('Authorization', 'Bearer test-key');
 
         expect(res.statusCode).toEqual(200);
         const ids = res.body.data.map((model) => model.id);

@@ -35,7 +35,43 @@ jest.unstable_mockModule('@opencode-ai/sdk', () => ({
     }))
 }));
 
-const { createApp, buildBackendConfigContent, checkHealth } = await import('../../src/proxy.js');
+const { buildBackendConfigContent, checkHealth } = await import('../../src/server.js');
+const sdkModule = await import('@opencode-ai/sdk');
+const appModule = await import('../../src/app.js');
+const conversationModule = await import('../../src/conversation/index.js');
+const loggingModule = await import('../../src/logging/index.js');
+const engineModule = await import('../../src/routes/engine.js');
+const upstreamsModule = await import('../../src/upstreams/index.js');
+
+/**
+ * Build an application the way `index.js` does, with the mocked SDK. Only the
+ * import path changed with the rewrite; the assertions below are untouched.
+ *
+ * @param {Record<string, any>} config Gateway config.
+ * @returns {{app: import('express').Application}} Application wrapper.
+ */
+const createApp = (config) => {
+    const logger = loggingModule.createLogger({ level: 'error', json: false, debug: false });
+    const runtime = upstreamsModule.createRuntimeUpstream({ config, logger, sdk: sdkModule });
+    const direct = upstreamsModule.createDirectUpstream({
+        config,
+        logger,
+        fetch: async () => {
+            throw new Error('direct upstream is not used in this suite');
+        }
+    });
+    const responseChains = engineModule.createResponseChainIndex({ logger });
+    const registry = conversationModule.createConversationRegistry({
+        config,
+        logger,
+        sessionBackend: runtime,
+        deleteSession: (sessionId) => runtime.deleteSession(sessionId),
+        isSessionHeld: (sessionId) => responseChains.isHeld(sessionId)
+    });
+    const router = upstreamsModule.createUpstreamRouter({ config, logger, direct, runtime, registry });
+    const app = appModule.createApp({ config, logger, registry, router, responseChains, ensureBackend: async () => {} });
+    return { app };
+};
 
 // Stands in for the OpenCode backend's health endpoint; the API itself is mocked.
 const backend = http.createServer((req, res) => {

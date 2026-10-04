@@ -1,13 +1,37 @@
+# Everything here stays on the build host. The image only needs the source tree,
+# package.json/package-lock.json and entrypoint.sh.
+#
+# LICENSE.md and NOTICE deliberately remain in the context: they are shipped
+# inside the image, because a container image is a distribution of the software.
+
+# dependencies and version control
 node_modules
-npm-debug.log
 .git
 .gitignore
-*.md
-!README.md
+.github
+
+# local state and secrets
 config.json
-config.json.example
-tests
-.DS_Store
-*.log
 .env
 .env.*
+coverage
+*.log
+npm-debug.log*
+.DS_Store
+*.tsbuildinfo
+
+# tests, docs and development tooling
+tests
+docs
+*.md
+!LICENSE.md
+Dockerfile
+docker-compose.yml
+.dockerignore
+.editorconfig
+.eslintrc
+eslint.config.js
+.prettierrc
+.prettierignore
+tsconfig.json
+.nvmrc

@@ -38,20 +38,20 @@ const resetSdkState = () => {
     sdkState.promptQueue = [];
 };
 
-const promptTextOf = (args) => (args?.body?.parts || [])
-    .map((part) => part.text || '')
-    .join('\n\n');
+const promptTextOf = (args) => (args?.body?.parts || []).map((part) => part.text || '').join('\n\n');
 
 const sdkMocks = {
     configProviders: jest.fn(async () => ({
         data: {
-            providers: [{
-                id: 'opencode',
-                models: {
-                    'kimi-k2.5': { name: 'Kimi k2.5', release_date: '2024-01-15' },
-                    'gpt-5-nano': { name: 'GPT-5 Nano', release_date: '2025-01-15' }
+            providers: [
+                {
+                    id: 'opencode',
+                    models: {
+                        'kimi-k2.5': { name: 'Kimi k2.5', release_date: '2024-01-15' },
+                        'gpt-5-nano': { name: 'GPT-5 Nano', release_date: '2025-01-15' }
+                    }
                 }
-            }]
+            ]
         }
     })),
     configUpdate: jest.fn(async () => ({})),
@@ -72,7 +72,12 @@ const sdkMocks = {
         const session = sdkState.sessions.get(id) || [];
         sdkState.sessions.set(id, session);
         const text = promptTextOf(args);
-        sdkState.prompts.push({ sessionId: id, parts: args?.body?.parts || [], system: args?.body?.system, model: args?.body?.model });
+        sdkState.prompts.push({
+            sessionId: id,
+            parts: args?.body?.parts || [],
+            system: args?.body?.system,
+            model: args?.body?.model
+        });
 
         const turn = session.filter((entry) => entry.info.role === 'assistant').length + 1;
         const reply = sdkState.replyOverrideNext || `reply-${turn}:${text.slice(0, 40)}`;
@@ -133,31 +138,39 @@ const sdkMocks = {
 };
 
 jest.unstable_mockModule('https', () => ({
-    default: { get: jest.fn((url, options, callback) => {
-        const res = { statusCode: 200, headers: {}, on: jest.fn((event, handler) => {
-            if (event === 'data') handler(Buffer.from(''));
-            if (event === 'end') handler();
-        }) };
-        callback(res);
-        return { on: jest.fn(), destroy: jest.fn() };
-    }) }
+    default: {
+        get: jest.fn((url, options, callback) => {
+            const res = {
+                statusCode: 200,
+                headers: {},
+                on: jest.fn((event, handler) => {
+                    if (event === 'data') handler(Buffer.from(''));
+                    if (event === 'end') handler();
+                })
+            };
+            callback(res);
+            return { on: jest.fn(), destroy: jest.fn() };
+        })
+    }
 }));
 
 jest.unstable_mockModule('http', () => ({
-    default: { get: jest.fn((url, options, callback) => {
-        const response = {
-            statusCode: 200,
-            headers: {},
-            resume: jest.fn(),
-            setEncoding: jest.fn(),
-            on: jest.fn((event, handler) => {
-                if (event === 'data') handler('{"healthy":true}');
-                if (event === 'end') handler();
-            })
-        };
-        callback(response);
-        return { on: jest.fn(), destroy: jest.fn(), setTimeout: jest.fn() };
-    }) }
+    default: {
+        get: jest.fn((url, options, callback) => {
+            const response = {
+                statusCode: 200,
+                headers: {},
+                resume: jest.fn(),
+                setEncoding: jest.fn(),
+                on: jest.fn((event, handler) => {
+                    if (event === 'data') handler('{"healthy":true}');
+                    if (event === 'end') handler();
+                })
+            };
+            callback(response);
+            return { on: jest.fn(), destroy: jest.fn(), setTimeout: jest.fn() };
+        })
+    }
 }));
 
 jest.unstable_mockModule('@opencode-ai/sdk', () => ({
@@ -178,22 +191,57 @@ jest.unstable_mockModule('@opencode-ai/sdk', () => ({
     }))
 }));
 
-const { createApp } = await import('../../src/proxy.js');
+// Everything that reaches the SDK must be imported dynamically, after
+// `jest.unstable_mockModule` has run.
+const sdk = await import('@opencode-ai/sdk');
+const { createApp } = await import('../../src/app.js');
+const { createConversationRegistry } = await import('../../src/conversation/index.js');
+const { createLogger } = await import('../../src/logging/index.js');
+const { createResponseChainIndex } = await import('../../src/routes/engine.js');
+const { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } =
+    await import('../../src/upstreams/index.js');
 
-const makeApp = (overrides = {}) => createApp({
-    PORT: 10000,
-    API_KEY: 'test-key',
-    OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
-    REQUEST_TIMEOUT_MS: 2000,
-    DISABLE_TOOLS: false,
-    DEBUG: false,
-    ...overrides
-}).app;
+/**
+ * Build an application the way `index.js` does, with the mocked SDK. The
+ * pre-rewrite suite called `createApp(config).app`; the rewrite keeps the frozen
+ * signature `buildApp({config, logger, registry, router, tools, engine})`.
+ *
+ * @param {Record<string, any>} config Gateway config.
+ * @returns {import('express').Application} Application.
+ */
+const buildApp = (config) => {
+    const logger = createLogger({ level: 'error', json: false, debug: false });
+    const runtime = createRuntimeUpstream({ config, logger, sdk });
+    const direct = createDirectUpstream({
+        config,
+        logger,
+        fetch: (...args) => globalThis.fetch(...args)
+    });
+    const responseChains = createResponseChainIndex({ logger });
+    const registry = createConversationRegistry({
+        config,
+        logger,
+        sessionBackend: runtime,
+        deleteSession: (sessionId) => runtime.deleteSession(sessionId),
+        isSessionHeld: (sessionId) => responseChains.isHeld(sessionId)
+    });
+    const router = createUpstreamRouter({ config, logger, direct, runtime, registry });
+    return createApp({ config, logger, registry, router, responseChains, ensureBackend: async () => {} });
+};
+
+const makeApp = (overrides = {}) =>
+    buildApp({
+        PORT: 10000,
+        API_KEY: 'test-key',
+        OPENCODE_SERVER_URL: 'http://127.0.0.1:10001',
+        REQUEST_TIMEOUT_MS: 2000,
+        DISABLE_TOOLS: false,
+        DEBUG: false,
+        ...overrides
+    });
 
 const chat = (app, { sessionId, header = 'session-id', messages, model = 'opencode/kimi-k2.5' }) => {
-    let req = request(app)
-        .post('/v1/chat/completions')
-        .set('Authorization', 'Bearer test-key');
+    let req = request(app).post('/v1/chat/completions').set('Authorization', 'Bearer test-key');
     if (sessionId !== undefined) req = req.set(header, sessionId);
     return req.send({ model, messages });
 };
@@ -251,7 +299,11 @@ describe('conversation session reuse', () => {
     test('stays stateless when no session header is present', async () => {
         await chat(app, { messages: [{ role: 'user', content: 'a' }] });
         await chat(app, {
-            messages: [{ role: 'user', content: 'a' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'b' }]
+            messages: [
+                { role: 'user', content: 'a' },
+                { role: 'assistant', content: 'x' },
+                { role: 'user', content: 'b' }
+            ]
         });
 
         expect(sdkState.createCount).toEqual(2);
@@ -280,7 +332,11 @@ describe('conversation session reuse', () => {
         await chat(app, {
             sessionId: 'conv-a',
             model: 'opencode/gpt-5-nano',
-            messages: [{ role: 'user', content: 'question' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'more' }]
+            messages: [
+                { role: 'user', content: 'question' },
+                { role: 'assistant', content: 'x' },
+                { role: 'user', content: 'more' }
+            ]
         });
 
         expect(sdkState.createCount).toEqual(2);
@@ -295,7 +351,11 @@ describe('conversation session reuse', () => {
         await chat(app, {
             sessionId: 'harness-conversation',
             header: 'x-deepseek-harness-session-id',
-            messages: [{ role: 'user', content: 'one' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'two' }]
+            messages: [
+                { role: 'user', content: 'one' },
+                { role: 'assistant', content: 'x' },
+                { role: 'user', content: 'two' }
+            ]
         });
 
         expect(sdkState.createCount).toEqual(1);
@@ -307,7 +367,11 @@ describe('conversation session reuse', () => {
         await new Promise((resolve) => setTimeout(resolve, 80));
         await chat(ttlApp, {
             sessionId: 'conv-ttl',
-            messages: [{ role: 'user', content: 'one' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'two' }]
+            messages: [
+                { role: 'user', content: 'one' },
+                { role: 'assistant', content: 'x' },
+                { role: 'user', content: 'two' }
+            ]
         });
 
         expect(sdkState.createCount).toEqual(2);
@@ -413,11 +477,16 @@ describe('conversation session reuse', () => {
         expect(sdkMocks.sessionDelete).not.toHaveBeenCalledWith({ path: { id: chainedSession } });
     });
 
-    test('can be disabled entirely', async () => {        const statelessApp = makeApp({ SESSION_REUSE_ENABLED: false });
+    test('can be disabled entirely', async () => {
+        const statelessApp = makeApp({ SESSION_REUSE_ENABLED: false });
         await chat(statelessApp, { sessionId: 'conv-off', messages: [{ role: 'user', content: 'one' }] });
         await chat(statelessApp, {
             sessionId: 'conv-off',
-            messages: [{ role: 'user', content: 'one' }, { role: 'assistant', content: 'x' }, { role: 'user', content: 'two' }]
+            messages: [
+                { role: 'user', content: 'one' },
+                { role: 'assistant', content: 'x' },
+                { role: 'user', content: 'two' }
+            ]
         });
 
         expect(sdkState.createCount).toEqual(2);
@@ -648,7 +717,10 @@ describe('conversation session reuse regressions', () => {
     });
 
     test('reports the whole conversation in prompt_tokens even when only the delta is sent', async () => {
-        const first = await chat(app, { sessionId: 'conv-tokens', messages: [{ role: 'user', content: 'first question' }] });
+        const first = await chat(app, {
+            sessionId: 'conv-tokens',
+            messages: [{ role: 'user', content: 'first question' }]
+        });
         const second = await chat(app, {
             sessionId: 'conv-tokens',
             messages: [
@@ -665,12 +737,9 @@ describe('conversation session reuse regressions', () => {
 });
 
 describe('turn timeouts and client disconnects', () => {
-    let app;
-
     beforeEach(() => {
         jest.clearAllMocks();
         resetSdkState();
-        app = makeApp();
     });
 
     test('times out a hung /v1/responses prompt instead of holding the turn forever', async () => {
@@ -746,7 +815,9 @@ describe('derived conversation identity (no session header)', () => {
 
     test('recognises a conversation from its content and reuses the session', async () => {
         const app = derivedApp();
-        const first = await chat(app, { messages: [{ role: 'user', content: 'remember the codeword ZEBRA' }] });
+        const first = await chat(app, {
+            messages: [{ role: 'user', content: 'remember the codeword ZEBRA' }]
+        });
         expect(first.statusCode).toEqual(200);
         expect(sdkState.createCount).toEqual(1);
 

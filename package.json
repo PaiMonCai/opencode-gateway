@@ -18,7 +18,8 @@
         "test:all": "npm run test && npm run test:contract && npm run test:verify",
         "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit --coverage --runInBand --detectOpenHandles",
         "test:integration": "bash tests/integration/test-integration.sh",
-        "test:stream": "bash tests/manual/test-streaming-real.sh"
+        "test:stream": "bash tests/manual/test-streaming-real.sh",
+        "test:streaming-real": "bash tests/manual/test-streaming-real.sh"
     },
     "keywords": [
         "opencode",

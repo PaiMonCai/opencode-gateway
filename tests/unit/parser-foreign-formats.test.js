@@ -1,11 +1,11 @@
 import { describe, expect, test } from '@jest/globals';
-import { buildExternalToolRegistry } from '../../src/tool-runtime/registry.js';
+import { buildExternalToolRegistry } from '../../src/tools/registry.js';
 import {
     parseExternalToolCallsFromText,
     stripFunctionCallMarkup,
     createToolCallFilter,
     createExternalToolCallStreamParser
-} from '../../src/tool-runtime/parser.js';
+} from '../../src/tools/parser.js';
 
 /**
  * Every fixture in this file is verbatim output captured from OpenCode free models

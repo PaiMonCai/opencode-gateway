@@ -179,21 +179,68 @@ export function rewriteModelFields(payload, modelName) {
 }
 
 /**
- * Rewrite one raw SSE record (`data: {...}\n\n`). Records that are not JSON,
- * keepalives and `[DONE]` pass through byte-for-byte.
+ * Record separators allowed by the SSE spec, longest first so a CRLF blank line
+ * is never split into a shorter match.
  *
- * @param {string} record Raw SSE record, including its trailing blank line.
+ * @type {readonly string[]}
+ */
+const SSE_RECORD_SEPARATORS = Object.freeze(['\r\n\r\n', '\n\n', '\r\r']);
+
+/**
+ * Find the earliest record separator in `text`.
+ *
+ * @param {string} text Buffered stream text.
+ * @returns {{index: number, separator: string}|null} Boundary, or `null` when no
+ *   complete record is buffered yet.
+ */
+function findRecordBoundary(text) {
+    let best = null;
+    for (const separator of SSE_RECORD_SEPARATORS) {
+        const index = text.indexOf(separator);
+        if (index === -1) continue;
+        if (
+            !best ||
+            index < best.index ||
+            (index === best.index && separator.length > best.separator.length)
+        ) {
+            best = { index, separator };
+        }
+    }
+    return best;
+}
+
+/**
+ * Matches one `data:` record and keeps its exact framing: the `data:` prefix,
+ * the payload line and the trailing whitespace (which may be absent on a
+ * truncated tail record). The payload line stops at either line terminator, so
+ * a CRLF record does not lose its `\r` into the payload.
+ *
+ * @type {RegExp}
+ */
+const SSE_DATA_RECORD = /^(data:[^\S\r\n]*)([^\r\n]*)([\s\S]*)$/;
+
+/**
+ * Rewrite one raw SSE record so its `model` fields carry the client-facing
+ * name. Records that are not JSON, keepalives and `[DONE]` pass through
+ * byte-for-byte, and a rewritten record keeps its original framing — including
+ * CRLF separators and a missing trailing blank line on a tail record, which is
+ * never synthesized.
+ *
+ * @param {string} record Raw SSE record, with whatever terminator it arrived with.
  * @param {string} modelName Client-facing model name.
  * @returns {string} The record to forward.
  */
 export function rewriteSseRecord(record, modelName) {
-    if (!modelName || !record.startsWith('data:')) return record;
-    const payloadText = record.slice(5).trim();
+    if (!modelName) return record;
+    const match = SSE_DATA_RECORD.exec(record);
+    if (!match) return record;
+    const [, prefix, payloadLine, trailing] = match;
+    const payloadText = payloadLine.trim();
     if (!payloadText || payloadText === '[DONE]') return record;
     try {
         const payload = JSON.parse(payloadText);
         if (!rewriteModelFields(payload, modelName)) return record;
-        return `data: ${JSON.stringify(payload)}\n\n`;
+        return `${prefix}${JSON.stringify(payload)}${trailing}`;
     } catch {
         return record;
     }
@@ -204,8 +251,9 @@ export function rewriteSseRecord(record, modelName) {
  * alike) so the client keeps seeing the model name it asked for, without
  * buffering or reordering anything else.
  *
- * Records are only rewritten once a full `\n\n` boundary has been seen; a tail
- * without a trailing blank line is flushed as-is at the end.
+ * Records are split on the separators the SSE spec allows (`\n\n`, `\r\n\r\n`,
+ * `\r\r`) and are forwarded with their original separator bytes. A tail record
+ * without a terminator is flushed as-is at the end.
  *
  * @param {AsyncIterable<Uint8Array>} source Upstream body stream.
  * @param {string} modelName Client-facing model name.
@@ -217,12 +265,13 @@ export async function* rewriteSseModel(source, modelName) {
     let buffer = '';
     for await (const chunk of source) {
         buffer += decoder.decode(chunk, { stream: true });
-        let boundary = buffer.indexOf('\n\n');
-        while (boundary !== -1) {
-            const record = buffer.slice(0, boundary + 2);
-            buffer = buffer.slice(boundary + 2);
+        let boundary = findRecordBoundary(buffer);
+        while (boundary) {
+            const end = boundary.index + boundary.separator.length;
+            const record = buffer.slice(0, end);
+            buffer = buffer.slice(end);
             yield encoder.encode(rewriteSseRecord(record, modelName));
-            boundary = buffer.indexOf('\n\n');
+            boundary = findRecordBoundary(buffer);
         }
     }
     buffer += decoder.decode();
@@ -404,6 +453,25 @@ export function createModelCatalog({
         }
     };
 
+    /** Last good catalog per provider, so one failing endpoint cannot drop the other. @type {Map<string, DirectLabels[]>} */
+    const lastGood = new Map();
+
+    /**
+     * Fetch one provider's catalog, falling back to that provider's own last good
+     * list when the refresh fails or comes back empty.
+     *
+     * @param {string} providerID Provider id.
+     * @param {string} baseUrl Upstream base URL.
+     * @param {string} [apiKey] Upstream key.
+     * @param {string} [clientVersion] Fingerprint version.
+     * @returns {Promise<DirectLabels[]>} This provider's models.
+     */
+    const lastGoodFor = async (providerID, baseUrl, apiKey, clientVersion) => {
+        const fetched = await fetchOne(providerID, baseUrl, apiKey, clientVersion);
+        if (fetched.length) lastGood.set(providerID, fetched);
+        return lastGood.get(providerID) || [];
+    };
+
     return {
         /**
          * @param {object} [options] Fetch options.
@@ -416,14 +484,15 @@ export function createModelCatalog({
          */
         async getModels({ apiKey, goBaseUrl, zenBaseUrl, clientVersion } = {}) {
             if (cached && Date.now() - cachedAt < ttlMs) return cached;
+            // Each provider keeps its own last good list: a single upstream being
+            // briefly unreachable must not drop the models the other one serves.
             const [goModels, zenModels] = await Promise.all([
-                fetchOne('opencode-go', goBaseUrl || DEFAULT_GO_BASE_URL, apiKey, clientVersion),
-                fetchOne('opencode', zenBaseUrl || DEFAULT_ZEN_BASE_URL, apiKey, clientVersion)
+                lastGoodFor('opencode-go', goBaseUrl || DEFAULT_GO_BASE_URL, apiKey, clientVersion),
+                lastGoodFor('opencode', zenBaseUrl || DEFAULT_ZEN_BASE_URL, apiKey, clientVersion)
             ]);
             const models = [...goModels, ...zenModels];
-            // Keep the last good list if the upstream is briefly unreachable; with
-            // no good list yet, report an empty catalog rather than `null`.
-            if (!models.length) return cached || [];
+            // With no good list at all, report an empty catalog rather than `null`.
+            if (!models.length) return [];
             cached = models;
             cachedAt = Date.now();
             return models;
@@ -432,6 +501,7 @@ export function createModelCatalog({
         invalidate() {
             cached = null;
             cachedAt = 0;
+            lastGood.clear();
         }
     };
 }

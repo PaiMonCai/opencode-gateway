@@ -17,4 +17,3 @@ tests/unit/*.test.js
 
 # Not owned by the rewrite.
 .github/workflows/docker-publish.yml
-docker-compose.yml

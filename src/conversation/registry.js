@@ -253,16 +253,17 @@ export function createConversationRegistry({
         }
 
         // Now that the turn owns the conversation, re-read what the store holds:
-        // a concurrent turn may have rotated or dropped the entry while this one
-        // was queued, and reusing a session that is already gone would fail the
-        // turn. A fresh key never has an entry, so this is a no-op for it.
-        if (key) {
-            const current = store.get(key);
-            if (!current) entry = null;
-            else if (!entry || current.sessionId !== entry.sessionId) entry = current;
-        }
+        // while this turn was queued, the lock holder may have extended the same
+        // session (same sessionId, higher sentCount), rotated it, or dropped it.
+        // The store is authoritative, so the captured entry is always replaced —
+        // comparing session ids alone would let a stale sentCount re-send turns
+        // the session already holds (invariant 2). Re-planning from the fresh
+        // state then rotates when the client history did not move past it.
+        if (key) entry = store.get(key);
 
-        const plan = previousSessionId ? planPinnedTurn(messages) : planConversationTurn(entry, messages);
+        const plan = previousSessionId
+            ? planPinnedTurn(messages)
+            : planConversationTurn(entry, messages, { logger, sessionId: entry?.sessionId || null });
         // A rotation (`reuse: false` with an entry present) needs a brand-new
         // session, so the entry's session is deliberately not handed back.
         const sessionId = previousSessionId || (plan.reuse ? entry?.sessionId || null : null);

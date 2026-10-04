@@ -119,6 +119,38 @@ describe('createModelCatalog', () => {
         }
     });
 
+    test('keeps one provider’s last good list when the other endpoint fails', async () => {
+        let goFails = false;
+        let zenIds = ['big-pickle'];
+        const stub = await startStub((req, res) => {
+            if (req.url.startsWith('/go/') && goFails) {
+                res.writeHead(500, { 'content-type': 'application/json' });
+                res.end('{"error":"boom"}');
+                return;
+            }
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(catalogBody(req.url.startsWith('/go/') ? ['kimi-k3'] : zenIds));
+        });
+        const catalog = createModelCatalog({ fetchImpl: globalThis.fetch, ttlMs: 0, logger: () => {} });
+        try {
+            const first = await catalog.getModels(options(stub));
+            expect(first.map((m) => m.id)).toEqual(['opencode-go/kimi-k3', 'opencode/big-pickle']);
+
+            goFails = true;
+            zenIds = ['big-pickle', 'zen-new'];
+            const second = await catalog.getModels(options(stub));
+
+            // Go keeps its last good list; zen is freshly refetched.
+            expect(second.map((m) => m.id)).toEqual([
+                'opencode-go/kimi-k3',
+                'opencode/big-pickle',
+                'opencode/zen-new'
+            ]);
+        } finally {
+            await stub.close();
+        }
+    });
+
     test('returns an empty list when the first fetch fails and never throws', async () => {
         const stub = await startStub((_req, res) => {
             res.writeHead(500);

@@ -24,7 +24,9 @@ const fakeRuntime = () => ({ ensureReady: async () => true });
  *
  * Mirrors the real registry's shape: `resolveTurn` is async, returns the
  * session it decided to reuse and may report `busy` when the turn lock could
- * not be taken.
+ * not be taken. A `previousSessionId` pins the turn to that session and forces
+ * a baseline snapshot, exactly like the real registry — which is how the direct
+ * path is caught if the router forwards the id.
  *
  * @param {object|null} [entry] Conversation entry to return.
  * @param {{busy?: boolean}} [options] Overrides.
@@ -39,11 +41,15 @@ const fakeRegistry = (entry = null, { busy = false } = {}) => {
         registry: {
             async resolveTurn(args) {
                 calls.push(args);
+                const pinned = Boolean(args.previousSessionId);
                 return {
                     key: 'conv-1',
                     entry,
-                    plan: {},
-                    sessionId: entry?.sessionId || null,
+                    plan: pinned ? { pinned: true } : {},
+                    sessionId: pinned ? args.previousSessionId : entry?.sessionId || null,
+                    // A pinned turn has no entry, so the registry can only snapshot
+                    // the runtime session state for the id.
+                    baseline: pinned ? { ok: false, messageIds: new Set(), partIds: new Set() } : null,
                     busy,
                     release: () => {}
                 };
@@ -158,8 +164,10 @@ describe('routing rules', () => {
         const deliverable = { messages: [] };
 
         await router.plan({
+            // A runtime model: `previousSessionId` is a runtime pin, so it must
+            // reach the registry on this path.
             providerID: 'opencode',
-            modelID: 'big-pickle',
+            modelID: 'kimi-k2.5-free',
             headers: { 'session-id': 'c1' },
             deliverable,
             toolMode: 'external-bridge',
@@ -180,6 +188,45 @@ describe('routing rules', () => {
                 toolsFingerprint: 'fp'
             }
         ]);
+    });
+
+    test('a direct turn never pins the previous response id or reads session state', async () => {
+        const { router, calls } = setup();
+
+        const plan = await router.plan({
+            providerID: 'opencode',
+            modelID: 'big-pickle',
+            headers: { 'session-id': 'c1' },
+            deliverable: { messages: [] },
+            previousSessionId: 'resp_abc123'
+        });
+
+        // The id belongs to the direct upstream and is relayed as-is by the
+        // assembly layer; pinning it here would force a baseline read the direct
+        // path does not have and fail the turn before the upstream is called.
+        expect(plan.mode).toBe('direct');
+        expect(calls[0].previousSessionId).toBeUndefined();
+        expect(plan.turn.plan.pinned).toBeUndefined();
+        expect(plan.turn.baseline).toBeNull();
+        expect(plan.sessionId).toMatch(/^ses_[0-9a-f]{24}$/);
+        expect(plan.sessionId).not.toBe('resp_abc123');
+    });
+
+    test('a runtime turn still pins the previous response id', async () => {
+        const { router, calls } = setup();
+
+        const plan = await router.plan({
+            providerID: 'opencode',
+            modelID: 'kimi-k2.5-free',
+            headers: { 'session-id': 'c1' },
+            deliverable: { messages: [] },
+            previousSessionId: 'ses_prev'
+        });
+
+        expect(plan.mode).toBe('runtime');
+        expect(calls[0].previousSessionId).toBe('ses_prev');
+        expect(plan.turn.plan.pinned).toBe(true);
+        expect(plan.sessionId).toBe('ses_prev');
     });
 
     test('reports a busy conversation instead of a usable turn', async () => {

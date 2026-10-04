@@ -213,6 +213,14 @@ export function createUpstreamRouter(
          * block, and must check `busy` before using `sessionId`: when the lock could
          * not be taken the turn is refused with `conversation_busy`.
          *
+         * `previousSessionId` is only forwarded to the registry for runtime turns.
+         * A direct turn must not be pinned: the id belongs to the upstream
+         * (`previous_response_id` is relayed as-is) and there is no runtime session
+         * state to snapshot, so pinning it would force a baseline read the direct
+         * path never needs — and fail the turn with `session_state_unavailable`
+         * before the upstream is even called (ARCHITECTURE §2: `baseline` is `null`
+         * in direct mode).
+         *
          * @param {PlanDescriptor} descriptor Turn descriptor.
          * @returns {Promise<TurnPlanResult>} Mode, reason, turn and session id.
          */
@@ -234,7 +242,7 @@ export function createUpstreamRouter(
                 headers,
                 scope,
                 deliverable,
-                previousSessionId,
+                ...(mode === 'runtime' && previousSessionId !== undefined && { previousSessionId }),
                 ...(clientAddress !== undefined && { clientAddress }),
                 ...(toolMode !== undefined && { toolMode }),
                 ...(toolsFingerprint !== undefined && { toolsFingerprint })
