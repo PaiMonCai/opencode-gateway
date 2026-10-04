@@ -300,11 +300,8 @@ const RETRY_MAX_ATTEMPTS = 3;
 // Reasoning models can take well over 10s before emitting their first token.
 // A short window here makes the event stream give up and fall back to polling on
 // every request, which loses true streaming. Configurable for slow backends.
-// The OPENCODE2API_* spelling is kept as a fallback for deployments that
-// predate the rename; the new name wins when both are set.
-const envTimeout = (name, legacyName) => process.env[name] ?? process.env[legacyName];
-const DEFAULT_EVENT_FIRST_DELTA_TIMEOUT_MS = Number(envTimeout('OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS', 'OPENCODE2API_EVENT_FIRST_DELTA_TIMEOUT_MS')) || 30000;
-const DEFAULT_EVENT_IDLE_TIMEOUT_MS = Number(envTimeout('OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS', 'OPENCODE2API_EVENT_IDLE_TIMEOUT_MS')) || 8000;
+const DEFAULT_EVENT_FIRST_DELTA_TIMEOUT_MS = Number(process.env.OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS) || 30000;
+const DEFAULT_EVENT_IDLE_TIMEOUT_MS = Number(process.env.OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS) || 8000;
 
 const OPENCODE_BASENAME = 'opencode';
 

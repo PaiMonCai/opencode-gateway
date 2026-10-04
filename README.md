@@ -198,10 +198,6 @@ OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
 
 MIT · 详见 [LICENSE](./LICENSE.md)
 
-## 🙏 致谢
+## 📄 第三方声明
 
-本项目是 [OpenCode2API](https://github.com/TiaraBasori/OpenCode2API)（MIT）的衍生版本，在此基础上重做了定位与架构：会话身份与复用、NewAPI/任意 OpenAI 网关兼容、Go 直连上游、双上游路由。
-
-- [TiaraBasori/OpenCode2API](https://github.com/TiaraBasori/OpenCode2API) — 上游项目
-- [dxxzst/opencode-to-openai](https://github.com/dxxzst/opencode-to-openai)
-- [lucasliet/opencode-openai-proxy](https://github.com/lucasliet/opencode-openai-proxy)
+本项目包含源自第三方开源项目的部分代码，其版权与许可声明完整保留在 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)，随每个副本一同分发（MIT 许可要求）。

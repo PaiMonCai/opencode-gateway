@@ -196,10 +196,9 @@ Model names: `opencode/big-pickle`, `gpt5-nano` (auto-resolved to `gpt-5-nano`),
 
 MIT · see [LICENSE](./LICENSE.md)
 
-## 🙏 Acknowledgements
+## 📄 Third-party notices
 
-This project is a derivative of [OpenCode2API](https://github.com/TiaraBasori/OpenCode2API) (MIT) with a reworked positioning and architecture: conversation identity and reuse, compatibility with any OpenAI gateway, direct Go upstream, and dual-upstream routing.
-
-- [TiaraBasori/OpenCode2API](https://github.com/TiaraBasori/OpenCode2API) — upstream project
-- [dxxzst/opencode-to-openai](https://github.com/dxxzst/opencode-to-openai)
-- [lucasliet/opencode-openai-proxy](https://github.com/lucasliet/opencode-openai-proxy)
+This project includes portions of code from third-party open-source work. Their
+copyright and license notices are kept in full in
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) and ship with every copy, as
+the MIT license requires.

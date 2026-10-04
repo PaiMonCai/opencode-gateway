@@ -17,13 +17,6 @@ function parseBool(value, fallback) {
     return Boolean(value);
 }
 
-/** New env name first, the pre-rename OPENCODE2API_* spelling as a fallback. */
-function envWithLegacy(name, legacyName) {
-    const current = process.env[name];
-    if (current !== undefined && current !== '') return current;
-    return process.env[legacyName];
-}
-
 function parseToolAllowlist(value, fallback = []) {
     if (Array.isArray(value)) {
         return [...new Set(value.map((entry) => String(entry || '').trim()).filter(Boolean))];
@@ -63,8 +56,8 @@ const defaultConfig = {
     // Event-stream timeouts. These used to be environment-only, which made them
     // easy to lose depending on how the process was started; they can now also
     // live in config.json so every launch path picks them up.
-    EVENT_IDLE_TIMEOUT_MS: parseInt(envWithLegacy('OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS', 'OPENCODE2API_EVENT_IDLE_TIMEOUT_MS')) || 0,
-    EVENT_FIRST_DELTA_TIMEOUT_MS: parseInt(envWithLegacy('OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS', 'OPENCODE2API_EVENT_FIRST_DELTA_TIMEOUT_MS')) || 0,
+    EVENT_IDLE_TIMEOUT_MS: parseInt(process.env.OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS) || 0,
+    EVENT_FIRST_DELTA_TIMEOUT_MS: parseInt(process.env.OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS) || 0,
     // Conversation session reuse (see SESSION_HEADER_NAMES below): 0 keeps the
     // proxy default TTL, an empty header list keeps the proxy default names.
     SESSION_REUSE_ENABLED: parseBool(process.env.OPENCODE_PROXY_SESSION_REUSE, true),
@@ -127,8 +120,8 @@ const finalConfig = {
     CLEANUP_INTERVAL_MS: parseInt(process.env.OPENCODE_PROXY_CLEANUP_INTERVAL_MS) || fileConfig.CLEANUP_INTERVAL_MS || defaultConfig.CLEANUP_INTERVAL_MS,
     CLEANUP_MAX_AGE_MS: parseInt(process.env.OPENCODE_PROXY_CLEANUP_MAX_AGE_MS) || fileConfig.CLEANUP_MAX_AGE_MS || defaultConfig.CLEANUP_MAX_AGE_MS,
     // undefined => keep the library default (8000 / 30000)
-    EVENT_IDLE_TIMEOUT_MS: parseInt(envWithLegacy('OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS', 'OPENCODE2API_EVENT_IDLE_TIMEOUT_MS')) || parseInt(fileConfig.EVENT_IDLE_TIMEOUT_MS) || undefined,
-    EVENT_FIRST_DELTA_TIMEOUT_MS: parseInt(envWithLegacy('OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS', 'OPENCODE2API_EVENT_FIRST_DELTA_TIMEOUT_MS')) || parseInt(fileConfig.EVENT_FIRST_DELTA_TIMEOUT_MS) || undefined,
+    EVENT_IDLE_TIMEOUT_MS: parseInt(process.env.OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS) || parseInt(fileConfig.EVENT_IDLE_TIMEOUT_MS) || undefined,
+    EVENT_FIRST_DELTA_TIMEOUT_MS: parseInt(process.env.OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS) || parseInt(fileConfig.EVENT_FIRST_DELTA_TIMEOUT_MS) || undefined,
     // Conversation session reuse: a client that sends a session identity header
     // (`session-id`, `x-deepseek-harness-session-id`, ...) keeps one backend
     // session across the turns of that conversation.

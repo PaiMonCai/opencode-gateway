@@ -108,4 +108,4 @@ npm start
 
 By contributing, you agree that your contributions will be licensed under the [MIT License](./LICENSE.md).
 
-This project is derived from [OpenCode2API](https://github.com/TiaraBasori/OpenCode2API) (MIT); the original copyright notice is preserved in `LICENSE.md` and must stay there.
+This project includes portions of code from third-party open-source work. The required third-party copyright and permission notices live in [`THIRD-PARTY-NOTICES.md`](./THIRD-PARTY-NOTICES.md) and must not be removed: the MIT license requires them to ship with every copy.

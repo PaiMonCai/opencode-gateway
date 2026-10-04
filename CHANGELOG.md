@@ -2,9 +2,8 @@
 
 All notable changes to this project will be documented in this file.
 
-> Entries up to and including `2.0.0` belong to the upstream project this one is
-> derived from ([OpenCode2API](https://github.com/TiaraBasori/OpenCode2API), MIT)
-> and are kept for history. Everything after that documents opencode-gateway.
+> This changelog starts with `3.0.0`, the release that reworked and renamed the
+> project. Third-party notices are in [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -16,9 +15,9 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 
 ### Changed
 
-- **Renamed**: package, plugin file (`opencode-gateway-tool-lock.js`), session-title prefix, and the `OPENCODE_GATEWAY_*` environment prefix. The previous `OPENCODE2API_*` names still work as fallbacks, so existing deployments keep running.
+- **Renamed**: package, plugin file (`opencode-gateway-tool-lock.js`), session-title prefix, and the `OPENCODE_GATEWAY_*` environment prefix, with no compatibility aliases for the old names.
 - **Positioning**: the local OpenCode runtime is no longer on the critical path — it serves the free tier, while Go and paid Zen traffic goes straight to OpenCode's own endpoints.
-- **MIT notice and upstream attribution preserved** (see `LICENSE.md`).
+- **Licensing**: the project is licensed under MIT with its own copyright line; the third-party notices required by the MIT license ship in `THIRD-PARTY-NOTICES.md`.
 
 ### Added
 
@@ -47,48 +46,3 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 ### Removed
 
 - `SEND_TOOL_OVERRIDES` / `OPENCODE_GATEWAY_SEND_TOOL_OVERRIDES`: the proxy picks plugin or override mode by checking the backend's loaded plugins.
-
-## [2.0.0] - 2026-09-25
-
-### Added
-
-- **English README**: Added `README.en.md` with a language switch between the Chinese and English docs.
-- **English Docs**: Added full `docs/en/` translations of every guide; Chinese guides now live under `docs/zh/`.
-- **Test Layout**: Split tests into `tests/unit/`, `tests/integration/`, and `tests/manual/`; added `npm run test:stream` for the live streaming smoke test and scoped Jest to `tests/unit`.
-
-### Changed
-
-- **Integration Script**: `tests/integration/test-integration.sh` accepts `TEST_API_KEY`; the manual streaming smoke test now documents its usage and stays out of CI.
-- **Documentation Overhaul**: Rewrote the README and `docs/` for accuracy and concision; documented `previous_response_id` session chaining, the full environment-variable surface, and corrected env var names to match the implementation (`OPENCODE_DISABLE_TOOLS`, `OPENCODE_USE_ISOLATED_HOME`, `OPENCODE_PROXY_PROMPT_MODE`, etc.).
-- **Config Surface Consistency**: `.env.example`, `docker-compose.yml`, and the `Dockerfile` now set `OPENCODE_DISABLE_TOOLS` instead of `DISABLE_TOOLS`, which the proxy never read.
-
-## [1.5.0] - 2026-04-18
-
-### Added
-
-- **External Tool Bridge**: Added proxy-level bridging for external OpenAI-compatible `tools` across `/v1/chat/completions` and `/v1/responses`.
-- **Streaming Tool Call Parity**: Added streaming support for external tool calls in both Chat Completions and Responses APIs.
-- **Explicit External Tool Config**: Added explicit `EXTERNAL_TOOLS_MODE=proxy-bridge` and `EXTERNAL_TOOLS_CONFLICT_POLICY=namespace` configuration surface and documentation.
-
-### Changed
-
-- **Project Version**: Bumped the repository version to `1.5.0` across package metadata and documentation badges.
-
-### Fixed
-
-- **Jest Test Shutdown**: Removed a lingering queue rescheduling timer from the proxy request lock flow and updated the default test command to use the verified clean Jest invocation, eliminating the previous generic open-handle warning during `npm test`.
-
-## [1.0.0] - 2025-04-11
-
-### Added
-
-- **OpenAI-compatible API**: `/v1/models`, `/v1/chat/completions`, `/v1/responses` endpoints
-- **Streaming Support**: Full SSE streaming for Chat Completions and Responses API
-- **Model Aliases**: GPT-style model aliasing (e.g., `gpt5-nano` → `gpt-5-nano`)
-- **Docker Deployment**: Complete Docker setup with healthcheck and volume management
-- **Configuration**: Environment variables and config.json support
-- **Auto Cleanup**: Configurable automatic conversation/session storage cleanup
-
-### Changed
-
-- **Default Security**: `DISABLE_TOOLS` defaults to `true` for safer out-of-box behavior
