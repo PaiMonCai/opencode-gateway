@@ -34,7 +34,10 @@ configured conversation header. JSON bodies up to 50 MB.
 Conversation headers (first non-empty wins, configurable order):
 `x-opencode-session`, `x-session-id`, `x-thread-id`, `x-conversation-id`,
 `x-deepseek-harness-session-id`, `session-id`, `session_id`, `thread-id`,
-`thread_id`, `conversation-id`, `conversation_id`.
+`thread_id`, `conversation-id`, `conversation_id`. The set is the same as
+`docs/*/configuration.md`; `x-opencode-session` is deliberately first so a
+client-supplied `session-id` cannot override the identity an operator configured
+on the gateway.
 
 ## 2. Chat Completions
 

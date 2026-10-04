@@ -18,7 +18,7 @@ Base URL：`http://127.0.0.1:10000`。配置了 `API_KEY` 时，`/v1/*` 请求�
 | 请求头 | 作用 |
 |:--|:--|
 | `Authorization` | `Bearer <API_KEY>`，配置了 `API_KEY` 时必填 |
-| `session-id` / `session_id` / `x-deepseek-harness-session-id` / `x-opencode-session` / `thread-id` / `thread_id` / `x-session-id` / `x-thread-id` / `conversation-id` / `conversation_id` / `x-conversation-id` | **会话身份**：同一个值代表同一段对话，中间件据此复用上游会话（只有新增轮次会发给上游）。按上表顺序取第一个非空值；名单可用 `OPENCODE_PROXY_SESSION_HEADERS` 收窄 |
+| `x-opencode-session` / `x-session-id` / `x-thread-id` / `x-conversation-id` / `x-deepseek-harness-session-id` / `session-id` / `session_id` / `thread-id` / `thread_id` / `conversation-id` / `conversation_id` | **会话身份**：同一个值代表同一段对话，中间件据此复用上游会话（只有新增轮次会发给上游）。按上表顺序取第一个非空值（`x-opencode-session` 最优先：它是运维在网关侧显式配置的身份，不应被客户端可能带上的 `session-id` 顶掉）；名单可用 `OPENCODE_PROXY_SESSION_HEADERS` 收窄或重排 |
 | `X-Forwarded-For` | 推导会话身份（`SESSION_DERIVE_ENABLED=true`）时参与隔离作用域 |
 
 不带任何会话头时，行为回到"每个请求一个会话"（如需自动复用，见[配置详解](./configuration.md)的推导模式）。

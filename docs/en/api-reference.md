@@ -18,7 +18,7 @@ Base URL: `http://127.0.0.1:10000`. When `API_KEY` is set, `/v1/*` requests need
 | Header | Purpose |
 |:--|:--|
 | `Authorization` | `Bearer <API_KEY>`, required when `API_KEY` is configured |
-| `session-id` / `session_id` / `x-deepseek-harness-session-id` / `x-opencode-session` / `thread-id` / `thread_id` / `x-session-id` / `x-thread-id` / `conversation-id` / `conversation_id` / `x-conversation-id` | **Conversation identity**: the same value means the same conversation, and the middleware reuses one upstream session for it (only the appended turns are sent). The first non-empty header in that order wins; narrow the list with `OPENCODE_PROXY_SESSION_HEADERS` |
+| `x-opencode-session` / `x-session-id` / `x-thread-id` / `x-conversation-id` / `x-deepseek-harness-session-id` / `session-id` / `session_id` / `thread-id` / `thread_id` / `conversation-id` / `conversation_id` | **Conversation identity**: the same value means the same conversation, and the middleware reuses one upstream session for it (only the appended turns are sent). The first non-empty header in that order wins; narrow the list with `OPENCODE_PROXY_SESSION_HEADERS` |
 | `X-Forwarded-For` | Part of the isolation scope when conversation identity is derived (`SESSION_DERIVE_ENABLED=true`) |
 
 With no such header the behaviour is one session per request (see the derived mode in [Configuration](./configuration.md) if you want automatic reuse).

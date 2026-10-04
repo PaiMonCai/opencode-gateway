@@ -94,19 +94,27 @@ Error codes are part of the public contract: `invalid_request_error`,
 ```js
 createConversationRegistry({ config, logger, clock }) -> Registry
 
+// async
 Registry.resolveTurn({ headers, scope, deliverable, previousSessionId }) -> {
   identity,          // { source: 'header' | 'derived' | 'none', header?, preview? }
   key,               // string | null
   entry,             // ConversationEntry | null   (mode: 'runtime' | 'direct')
-  plan,              // TurnPlan { reuse, delta, deltaStartIndex, sentCount, sentDigest, rewrite }
-  baseline,          // { ok, messageIds, partIds } | null
-  release            // () => void  — MUST be called in a finally block
+  plan,              // TurnPlan { reuse, delta, deltaStartIndex, sentCount, sentDigest, rewrite,
+                   //            rotation?, pinned? }
+  baseline,          // { ok, messageIds, partIds } | null  (null in direct mode: nothing to filter)
+  sessionId,         // upstream session to use (null while busy)
+  busy,              // true when the conversation lock could not be taken → 503 conversation_busy
+  release            // () => void — MUST be called in a finally block (a no-op when busy)
 }
 
 Registry.storeTurn({ key, sessionId, mode, plan, replyText, startKey })
 Registry.discard({ key })            // drop entry + close the session it owned
 Registry.sweep()                     // TTL + size caps
 ```
+
+Identity comes from the first non-empty header in the configured order, and the
+default order starts with `x-opencode-session`: a gateway operator sets that
+header deliberately, so a client-supplied `session-id` must not override it.
 
 Invariants (these are the product):
 
@@ -146,13 +154,17 @@ createRuntimeUpstream({ config, logger, sdk }) -> {
 }
 
 createUpstreamRouter({ config, logger, direct, runtime, catalog, registry }) -> {
+  // async; `busy: true` means the caller answers 503 conversation_busy and still
+  // releases through the returned turn.
   plan({ providerID, modelID, headers, deliverable, toolMode, toolsFingerprint }) -> {
     mode,            // 'direct' | 'runtime'
     reason,          // for logs
     turn,            // Registry.resolveTurn(...) result (lock already held)
-    sessionId
+    sessionId,       // from turn.sessionId; generated for a direct turn without one
+    busy             // see above
   },
-  fallback(turn, reason) -> void   // remembers runtime-only models, releases direct state
+  fallback(turn, reason) -> void,  // reason: 'free-tier' | 'auth' | 'transport'
+  allowsFallback() -> boolean      // DIRECT_FALLBACK_TO_RUNTIME
 }
 ```
 
