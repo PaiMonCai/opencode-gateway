@@ -33,6 +33,27 @@ export const REDACTED = '[redacted]';
 const SECRET_KEY_PATTERN =
     /(api[-_]?key|apikey|password|passwd|secret|token|authorization|credential|cookie|private[-_]?key)/i;
 
+/**
+ * Field names that merely *mention* a token: usage counters and limits. They are
+ * numbers, they are useful in a debug line, and the secret pattern above matched
+ * `max_tokens` because it contains `token`.
+ *
+ * @type {RegExp}
+ */
+const COUNTER_KEY_PATTERN =
+    /^(max_tokens|total_tokens|prompt_tokens|completion_tokens|reasoning_tokens|input_tokens|output_tokens|cached_tokens|tokens)$/i;
+
+/**
+ * Whether a field name must be redacted.
+ *
+ * @param {string} key Field name.
+ * @returns {boolean} True when the value is a secret.
+ */
+export function isSecretKey(key) {
+    if (COUNTER_KEY_PATTERN.test(key)) return false;
+    return SECRET_KEY_PATTERN.test(key);
+}
+
 /** Inline secret shapes scrubbed from otherwise harmless strings. */
 const INLINE_SECRET_PATTERNS = Object.freeze([
     /Bearer\s+[A-Za-z0-9._~+/=-]{6,}/gi,
@@ -122,7 +143,7 @@ export function redact(value, depth = 0, seen = new WeakSet()) {
     /** @type {Record<string, unknown>} */
     const output = {};
     for (const [key, entry] of Object.entries(value)) {
-        output[key] = SECRET_KEY_PATTERN.test(key) ? REDACTED : redact(entry, depth + 1, seen);
+        output[key] = isSecretKey(key) ? REDACTED : redact(entry, depth + 1, seen);
     }
     return output;
 }

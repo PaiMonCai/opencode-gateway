@@ -353,3 +353,37 @@ describe('debug flag', () => {
         expect(stream.lines[0]).toContain('kept');
     });
 });
+
+describe('redaction precision', () => {
+    test('usage counters and limits survive', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'debug', json: true, stream });
+        log.debug('Request params', {
+            max_tokens: 4096,
+            total_tokens: 12,
+            prompt_tokens: 3,
+            tokens: { input: 1, output: 2 },
+            reasoning_effort: null
+        });
+        const record = JSON.parse(stream.lines[0]);
+        expect(record.max_tokens).toBe(4096);
+        expect(record.total_tokens).toBe(12);
+        expect(record.prompt_tokens).toBe(3);
+        expect(record.tokens).toEqual({ input: 1, output: 2 });
+    });
+
+    test('real secrets are still redacted', () => {
+        const stream = createStream();
+        const log = createLogger({ level: 'debug', json: true, stream });
+        log.debug('Auth', {
+            api_key: 'sk-live-1234567890',
+            authorization: 'Bearer abcdefghijkl',
+            newapi_token: 'tok_1234567890',
+            password: 'hunter2'
+        });
+        const record = JSON.parse(stream.lines[0]);
+        for (const key of ['api_key', 'authorization', 'newapi_token', 'password']) {
+            expect(record[key]).toBe('[redacted]');
+        }
+    });
+});
