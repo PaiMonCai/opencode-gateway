@@ -29,7 +29,10 @@ export default [
     },
     js.configs.recommended,
     {
-        files: ['**/*.js'],
+        // The whole repository is Node, including the .mjs scripts under tests/
+        // and the tooling files; give every module the Node globals instead of
+        // sprinkling `/* global */` comments.
+        files: ['**/*.js', '**/*.mjs'],
         languageOptions: {
             ecmaVersion: 2023,
             sourceType: 'module',
@@ -54,7 +57,7 @@ export default [
         }
     },
     {
-        files: ['tests/**/*.js'],
+        files: ['tests/**/*.js', 'tests/**/*.mjs'],
         languageOptions: {
             globals: {
                 ...globals.node,

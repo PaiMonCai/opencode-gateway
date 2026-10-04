@@ -194,6 +194,15 @@ The middleware's own errors look like `{"error": {"message": ..., "type": ..., "
 
 ### 503 Service Unavailable
 
+> **Chat is serialized (pre-existing behaviour)**: every `/v1/chat/completions` turn
+> runs inside a process-wide mutex (as it did before the rewrite), so chat requests
+> for *different* conversations queue behind each other. `503 conversation_busy` is
+> therefore observable mainly on `/v1/responses`; a queued chat request waits up to
+> the request timeout plus 20 seconds. This is a known throughput limit, not a
+> regression of the rewrite — making the chat surface concurrent is a separate
+> change that first needs the engine's shared state and tool policy to be proven
+> concurrency-safe.
+
 Two conversation-related reasons:
 
 ```json

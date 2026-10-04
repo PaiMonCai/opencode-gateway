@@ -19,6 +19,12 @@ in the same way, so gateways see no surprise change.
 | GET | `/v1/models` | Bearer when `API_KEY` set | runtime catalog, else upstream catalogs, else one fallback model |
 | POST | `/v1/chat/completions` | Bearer when `API_KEY` set | streaming and non-streaming |
 | POST | `/v1/responses` | Bearer when `API_KEY` set | streaming and non-streaming, `previous_response_id` chaining |
+**Chat serialization (parity)**: `/v1/chat/completions` runs each turn inside a
+process-wide mutex, so different conversations queue behind each other and
+`503 conversation_busy` is only observable on `/v1/responses`. Kept from the
+pre-rewrite implementation; the queued wait is bounded by the request timeout
+plus 20 seconds.
+
 | any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
 
 Malformed JSON bodies answer `400 {"error":{"message":"Invalid JSON in request body",...}}`

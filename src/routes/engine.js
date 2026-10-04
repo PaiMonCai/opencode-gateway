@@ -3331,7 +3331,7 @@ export function createTurnEngine({
                 messages = buildResponsesInputMessages(chatMessages);
             } else if (typeof prompt === 'string' && prompt.trim()) {
                 messages = [{ role: 'user', content: prompt }];
-            } else if (typeof input === 'string') {
+            } else if (typeof input === 'string' && input.trim()) {
                 messages = [{ role: 'user', content: input }];
             } else if (Array.isArray(input)) {
                 messages = buildResponsesInputMessages(input);
@@ -3481,12 +3481,10 @@ export function createTurnEngine({
             if (turnPlan?.reuse || previousState?.sessionId) {
                 turnBaseline = resolvedTurn.baseline;
                 if (!turnBaseline || !turnBaseline.ok) {
-                    throw Object.assign(
-                        new Error(
-                            'Could not read the session state for this conversation; retry the request'
-                        ),
-                        { statusCode: 503, code: 'session_state_unavailable' }
-                    );
+                    // Answer here, exactly like the chat surface: throwing would send
+                    // this through the upstream error mapper, which rewrites any 5xx
+                    // into 502 server_error and loses the documented code.
+                    return res.status(503).json(sessionStateUnavailableBody());
                 }
             }
 
@@ -4058,8 +4056,12 @@ export function createTurnEngine({
             }
 
             if (!content && !reasoning && responseRes.data && promptBasedToolCalls.length === 0) {
+                // A tool-only or empty turn has nothing to say: leaving the output
+                // empty is the documented behaviour. Serializing the internal
+                // payload here used to leak the runtime's part structure to the
+                // client as if it were an answer.
                 const data = responseRes.data;
-                content = typeof data === 'string' ? data : data?.message || JSON.stringify(data);
+                content = typeof data === 'string' ? data : data?.message || '';
             }
 
             let parsedToolCalls =

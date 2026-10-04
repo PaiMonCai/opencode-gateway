@@ -51,4 +51,6 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 
 ### Removed
 
+- **Third-party notice**: the original code this project was derived from has been fully replaced — `src/**`, `plugin/**`, `index.js` and the test suites are new implementations, and the packaging layer was rewritten from scratch (similarity to the original dropped to 38–54%, remaining overlap being unavoidable configuration vocabulary such as `.editorconfig`/`.gitignore` tokens and Docker/compose directives). With no substantial portion of the original software left, `NOTICE` was removed and `LICENSE.md` is now the only licensing document.
+
 - `SEND_TOOL_OVERRIDES` / `OPENCODE_GATEWAY_SEND_TOOL_OVERRIDES`: the proxy picks plugin or override mode by checking the backend's loaded plugins.
