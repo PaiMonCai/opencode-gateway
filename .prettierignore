@@ -1,0 +1,20 @@
+# Generated and vendored artifacts.
+node_modules/
+coverage/
+package-lock.json
+
+# Prose, not code.
+*.md
+docs/
+
+# Pre-rewrite files that the migration deletes (architecture §5). Each entry is
+# removed once the module it points at is rewritten.
+index.js
+src/proxy.js
+src/tool-runtime/
+src/upstream/
+tests/unit/*.test.js
+
+# Not owned by the rewrite.
+.github/workflows/docker-publish.yml
+docker-compose.yml

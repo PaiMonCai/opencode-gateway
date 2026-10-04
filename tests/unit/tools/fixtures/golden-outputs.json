@@ -1,0 +1,4775 @@
+{
+    "meta": {
+        "generatedAt": "2026-10-04",
+        "generatedFrom": "src/tool-runtime/* at git HEAD c68e10369b815e991d1c56277f28e98080d10ef8 (pre-rewrite implementation)",
+        "normalization": "call ids matching /^call_\\d{10,}_/ are stored as call_TS_ because toFinalCalls() seeds ids with Date.now()",
+        "order": "parallel arrays follow the fixture lists and the iteration order documented in parity.test.js"
+    },
+    "registryEntries": [
+        {
+            "id": "external_tool_1",
+            "originalName": "bash",
+            "namespacedName": "external__bash",
+            "description": "Run a shell command",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string"
+                    },
+                    "timeout": {
+                        "type": "integer"
+                    }
+                },
+                "required": ["command"]
+            },
+            "sideEffect": "none",
+            "riskLevel": "low",
+            "requiresConfirmation": false,
+            "enabled": true
+        },
+        {
+            "id": "external_tool_2",
+            "originalName": "read",
+            "namespacedName": "external__read",
+            "description": "Read a file",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file": {
+                        "type": "string"
+                    },
+                    "offset": {
+                        "type": "integer"
+                    },
+                    "follow": {
+                        "type": "boolean"
+                    },
+                    "options": {
+                        "type": "object"
+                    }
+                },
+                "required": ["file"]
+            },
+            "sideEffect": "read",
+            "riskLevel": "low",
+            "requiresConfirmation": false,
+            "enabled": true
+        },
+        {
+            "id": "external_tool_3",
+            "originalName": "bash",
+            "namespacedName": "external__bash_2",
+            "description": "",
+            "parameters": {
+                "type": "object",
+                "properties": {}
+            },
+            "sideEffect": "none",
+            "riskLevel": "low",
+            "requiresConfirmation": false,
+            "enabled": true
+        }
+    ],
+    "lookupNamespaced": [
+        "external__bash",
+        "external__bash",
+        "external__read",
+        "external__read",
+        null,
+        null,
+        null,
+        "external__bash_2",
+        null,
+        null
+    ],
+    "parseExternal": [
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"a\"}"
+                }
+            },
+            {
+                "id": "call_external__bash_2",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"b\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"date\"}"
+                }
+            }
+        ],
+        [],
+        [],
+        [
+            {
+                "id": "call_abc",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"123.txt\",\"offset\":10,\"follow\":true}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"data.json\",\"options\":{\"deep\":true,\"levels\":[1,2]}}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls -la\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"echo one\\necho two\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"a.txt\",\"offset\":\"5\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"date\"}"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls > out.txt\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"pwd\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"0123.txt\",\"offset\":7,\"follow\":false}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"a.txt\"}"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"a.txt\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "echo hi"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [],
+        [],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"a.txt\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{}"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__bash_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "[1,2]"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_external__read_1",
+                "type": "function",
+                "function": {
+                    "name": "read",
+                    "arguments": "{\"file\":\"x\"}"
+                }
+            }
+        ]
+    ],
+    "parseCanonical": [
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"a\"}"
+                }
+            },
+            {
+                "id": "call_TS_2",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"b\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"date\"}"
+                }
+            }
+        ],
+        [],
+        [],
+        [
+            {
+                "id": "call_abc",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__nope",
+                    "arguments": "{}"
+                }
+            }
+        ],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [],
+        [],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__read",
+                    "arguments": "{\"file\":\"a.txt\"}"
+                }
+            }
+        ],
+        [],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "webfetch",
+                    "arguments": "{}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "bash",
+                    "arguments": "{\"command\":\"ls\"}"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__bash",
+                    "arguments": "[1,2]"
+                }
+            }
+        ],
+        [
+            {
+                "id": "call_TS_1",
+                "type": "function",
+                "function": {
+                    "name": "external__read",
+                    "arguments": "{\"file\":\"x\"}"
+                }
+            },
+            {
+                "id": "call_TS_2",
+                "type": "function",
+                "function": {
+                    "name": "external__read",
+                    "arguments": "{\"file\":\"x\"}"
+                }
+            }
+        ]
+    ],
+    "strip": [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "\n",
+        "",
+        "\n",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "<external__bash arguments='{\"command\":\"ls\"}'/>",
+        "<external__bash arguments='{\"command\":\"ls\"}'/>",
+        "",
+        "",
+        "<external__bash arguments={\"command\":\"ls > out.txt\"} />",
+        "<external__bash arguments={\"command\":\"ls > out.txt\"} />",
+        "",
+        "",
+        "<external__bash />",
+        "<external__bash />",
+        "",
+        "",
+        "<external__bash>{\"command\":\"pwd\"}</external__bash>",
+        "<external__bash>{\"command\":\"pwd\"}</external__bash>",
+        "",
+        "",
+        "<external__bash \"Run a shell command\">\n{\"command\":\"ls\"}</external__bash>",
+        "<external__bash \"Run a shell command\">\n{\"command\":\"ls\"}</external__bash>",
+        "",
+        "",
+        "<read><file>0123.txt</file><offset>7</offset><follow>false</follow></read>",
+        "<read><file>0123.txt</file><offset>7</offset><follow>false</follow></read>",
+        "",
+        "",
+        "<read><parameters><file>a.txt</file></parameters></read>",
+        "<read><parameters><file>a.txt</file></parameters></read>",
+        "<summary>{\"name\":\"external__bash\"}</summary>",
+        "<summary>{\"name\":\"external__bash\"}</summary>",
+        "<summary>{\"name\":\"external__bash\"}</summary>",
+        "<summary>{\"name\":\"external__bash\"}</summary>",
+        "",
+        "",
+        "<bash arguments={\"command\":\"ls\"} />",
+        "<bash arguments={\"command\":\"ls\"} />",
+        "",
+        "",
+        "{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}",
+        "{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}",
+        "",
+        "",
+        "```json\n{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}\n```",
+        "```json\n{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}\n```",
+        "",
+        "",
+        "{\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"external__bash\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}",
+        "{\"tool_calls\":[{\"id\":\"call_1\",\"function\":{\"name\":\"external__bash\",\"arguments\":\"{\\\"command\\\":\\\"ls\\\"}\"}}]}",
+        "",
+        "",
+        "{\"type\":\"function_call\",\"name\":\"external__read\",\"arguments\":\"{\\\"file\\\":\\\"a.txt\\\"}\"}",
+        "{\"type\":\"function_call\",\"name\":\"external__read\",\"arguments\":\"{\\\"file\\\":\\\"a.txt\\\"}\"}",
+        "",
+        "",
+        "{\"name\":\"external__bash\",\"arguments\":\"echo hi\"}",
+        "{\"name\":\"external__bash\",\"arguments\":\"echo hi\"}",
+        "Try {\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}} and tell me what happens",
+        "Try {\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}} and tell me what happens",
+        "Try {\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}} and tell me what happens",
+        "Try {\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}} and tell me what happens",
+        "",
+        "\n",
+        "<external__bash>{\"command\":\"ls\"}</external__bash>",
+        "<external__bash>{\"command\":\"ls\"}</external__bash>\n",
+        "plain prose with <angle brackets> and no calls",
+        "plain prose with <angle brackets> and no calls",
+        "plain prose with <angle brackets> and no calls",
+        "plain prose with <angle brackets> and no calls",
+        "",
+        "",
+        "",
+        "",
+        "Answer:  done",
+        "Answer:  done",
+        "Answer:  done",
+        "Answer:  done",
+        "answer  after",
+        "answer  after",
+        "answer  after",
+        "answer  after",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+    ],
+    "filter": [
+        {
+            "chunks": ["answer <function_calls>{\"name\":\"external__bash\"}</function_calls>"],
+            "outputs": ["answer "],
+            "flush": ""
+        },
+        {
+            "chunks": ["answer <function_calls>{\"name\":\"external__bash\"}</function_calls>"],
+            "outputs": ["answer "],
+            "flush": ""
+        },
+        {
+            "chunks": ["answer ", "<function_calls>{\"name\":\"ext"],
+            "outputs": ["answer ", ""],
+            "flush": "{\"name\":\"ext"
+        },
+        {
+            "chunks": ["answer ", "<function_calls>{\"name\":\"ext"],
+            "outputs": ["answer ", ""],
+            "flush": "{\"name\":\"ext"
+        },
+        {
+            "chunks": [
+                "<function_calls>{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}</function_calls>"
+            ],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": [
+                "<function_calls>{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}</function_calls>"
+            ],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": ["</function_calls>"],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": ["</function_calls>"],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": ["{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}"],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": ["{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}"],
+            "outputs": [""],
+            "flush": "{\"name\":\"external__bash\",\"arguments\":{\"command\":\"ls\"}}"
+        },
+        {
+            "chunks": ["{", "not a tool call"],
+            "outputs": ["", ""],
+            "flush": "{not a tool call"
+        },
+        {
+            "chunks": ["{", "not a tool call"],
+            "outputs": ["", ""],
+            "flush": "{not a tool call"
+        },
+        {
+            "chunks": ["part </function_", "calls>"],
+            "outputs": ["part ", ""],
+            "flush": ""
+        },
+        {
+            "chunks": ["part </function_", "calls>"],
+            "outputs": ["part ", ""],
+            "flush": ""
+        },
+        {
+            "chunks": [
+                "<invoke name=\"external__bash\">",
+                "<parameter name=\"command\">ls</parameter>",
+                "</invoke>"
+            ],
+            "outputs": ["", "", ""],
+            "flush": ""
+        },
+        {
+            "chunks": [
+                "<invoke name=\"external__bash\">",
+                "<parameter name=\"command\">ls</parameter>",
+                "</invoke>"
+            ],
+            "outputs": ["", "", ""],
+            "flush": ""
+        },
+        {
+            "chunks": ["<external__bash arguments={\"command\":\"ls\"}"],
+            "outputs": [""],
+            "flush": "<external__bash arguments={\"command\":\"ls\"}"
+        },
+        {
+            "chunks": ["<external__bash arguments={\"command\":\"ls\"}"],
+            "outputs": ["<external__bash arguments={\"command\":\"ls\"}"],
+            "flush": ""
+        },
+        {
+            "chunks": ["<external__bash arguments={\"command\":\"ls\"} />"],
+            "outputs": [""],
+            "flush": ""
+        },
+        {
+            "chunks": ["<external__bash arguments={\"command\":\"ls\"} />"],
+            "outputs": ["<external__bash arguments={\"command\":\"ls\"} />"],
+            "flush": ""
+        },
+        {
+            "chunks": ["plain text ", "continued"],
+            "outputs": ["plain text ", "continued"],
+            "flush": ""
+        },
+        {
+            "chunks": ["plain text ", "continued"],
+            "outputs": ["plain text ", "continued"],
+            "flush": ""
+        },
+        {
+            "chunks": [
+                "<function_calls>",
+                "{\"name\":\"external__bash\",\"arguments\":{}}",
+                "</function_calls>"
+            ],
+            "outputs": ["", "", ""],
+            "flush": ""
+        },
+        {
+            "chunks": [
+                "<function_calls>",
+                "{\"name\":\"external__bash\",\"arguments\":{}}",
+                "</function_calls>"
+            ],
+            "outputs": ["", "", ""],
+            "flush": ""
+        },
+        {
+            "chunks": ["no markup at all"],
+            "outputs": ["no markup at all"],
+            "flush": ""
+        },
+        {
+            "chunks": ["no markup at all"],
+            "outputs": ["no markup at all"],
+            "flush": ""
+        }
+    ],
+    "filterPassthrough": [
+        {
+            "options": {
+                "disableTools": false
+            },
+            "outputs": ["x<function_calls>y"],
+            "flush": ""
+        },
+        {
+            "options": {
+                "disableTools": true,
+                "forceStrip": false
+            },
+            "outputs": ["x"],
+            "flush": "y"
+        },
+        {
+            "options": {},
+            "outputs": ["x<function_calls>y"],
+            "flush": ""
+        }
+    ],
+    "stream": [
+        {
+            "chunks": [
+                "<function_calls>{\"name\":\"external__bash\",",
+                "\"arguments\":{\"command\":\"ls\"}}</function_calls>"
+            ],
+            "outputs": [
+                [],
+                [
+                    {
+                        "id": "call_external__bash_1_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{\"command\":\"ls\"}"
+                        }
+                    }
+                ]
+            ],
+            "flush": []
+        },
+        {
+            "chunks": ["<external__bash>{\"command\":\"ls\"}"],
+            "outputs": [[]],
+            "flush": [
+                {
+                    "id": "call_external__bash_1_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    }
+                }
+            ]
+        },
+        {
+            "chunks": ["<external__bash arguments={\"command\":\"ls\"} />"],
+            "outputs": [[]],
+            "flush": [
+                {
+                    "id": "call_external__bash_1_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    }
+                }
+            ]
+        },
+        {
+            "chunks": ["<tool_call><function=read><parameter=file>a.txt</parameter></function></tool_call>"],
+            "outputs": [
+                [
+                    {
+                        "id": "call_external__read_1_1",
+                        "type": "function",
+                        "function": {
+                            "name": "read",
+                            "arguments": "{\"file\":\"a.txt\"}"
+                        }
+                    }
+                ]
+            ],
+            "flush": []
+        },
+        {
+            "chunks": ["<summary>x</summary>"],
+            "outputs": [[]],
+            "flush": []
+        },
+        {
+            "chunks": [
+                "text <function_calls>{\"name\":\"external__bash\",\"arguments\":{\"command\":\"a\"}}</function_calls> <function_calls>{\"name\":\"external__bash\",\"arguments\":{\"command\":\"b\"}}</function_calls>"
+            ],
+            "outputs": [
+                [
+                    {
+                        "id": "call_external__bash_1_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{\"command\":\"a\"}"
+                        }
+                    },
+                    {
+                        "id": "call_external__bash_1_2",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{\"command\":\"b\"}"
+                        }
+                    }
+                ]
+            ],
+            "flush": []
+        },
+        {
+            "chunks": ["<function_calls>{\"name\":\"external__nope\",\"arguments\":{}}</function_calls>"],
+            "outputs": [[]],
+            "flush": []
+        }
+    ],
+    "emptyRegistryCalls": [],
+    "validator": [
+        {
+            "status": "valid",
+            "normalizedArguments": {
+                "command": "ls"
+            },
+            "tool": {
+                "id": "external_tool_1",
+                "originalName": "bash",
+                "namespacedName": "external__bash",
+                "description": "Run a shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "sideEffect": "none",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "status": "repairable",
+            "errors": [
+                {
+                    "code": "invalid_arguments_json",
+                    "message": "Invalid JSON arguments for bash: Unexpected token 'o', \"not json\" is not valid JSON",
+                    "path": []
+                }
+            ],
+            "tool": {
+                "id": "external_tool_1",
+                "originalName": "bash",
+                "namespacedName": "external__bash",
+                "description": "Run a shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "sideEffect": "none",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "status": "rejected",
+            "errors": [
+                {
+                    "code": "invalid_type",
+                    "message": "Field command must be a string",
+                    "path": ["command"]
+                }
+            ],
+            "tool": {
+                "id": "external_tool_1",
+                "originalName": "bash",
+                "namespacedName": "external__bash",
+                "description": "Run a shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "sideEffect": "none",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "status": "rejected",
+            "errors": [
+                {
+                    "code": "missing_required_field",
+                    "message": "Missing required field: command",
+                    "path": ["command"]
+                }
+            ],
+            "tool": {
+                "id": "external_tool_1",
+                "originalName": "bash",
+                "namespacedName": "external__bash",
+                "description": "Run a shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "sideEffect": "none",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "status": "rejected",
+            "errors": [
+                {
+                    "code": "invalid_type",
+                    "message": "Field file must be a string",
+                    "path": ["file"]
+                }
+            ],
+            "tool": {
+                "id": "external_tool_2",
+                "originalName": "read",
+                "namespacedName": "external__read",
+                "description": "Read a file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string"
+                        },
+                        "offset": {
+                            "type": "integer"
+                        },
+                        "follow": {
+                            "type": "boolean"
+                        },
+                        "options": {
+                            "type": "object"
+                        }
+                    },
+                    "required": ["file"]
+                },
+                "sideEffect": "read",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "name": "read",
+                    "description": "Read a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file": {
+                                "type": "string"
+                            },
+                            "offset": {
+                                "type": "integer"
+                            },
+                            "follow": {
+                                "type": "boolean"
+                            },
+                            "options": {
+                                "type": "object"
+                            }
+                        },
+                        "required": ["file"]
+                    }
+                }
+            }
+        },
+        {
+            "status": "repairable",
+            "errors": [
+                {
+                    "code": "invalid_arguments_json",
+                    "message": "Invalid JSON arguments for read: arguments must be a JSON object",
+                    "path": []
+                }
+            ],
+            "tool": {
+                "id": "external_tool_2",
+                "originalName": "read",
+                "namespacedName": "external__read",
+                "description": "Read a file",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "file": {
+                            "type": "string"
+                        },
+                        "offset": {
+                            "type": "integer"
+                        },
+                        "follow": {
+                            "type": "boolean"
+                        },
+                        "options": {
+                            "type": "object"
+                        }
+                    },
+                    "required": ["file"]
+                },
+                "sideEffect": "read",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "name": "read",
+                    "description": "Read a file",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "file": {
+                                "type": "string"
+                            },
+                            "offset": {
+                                "type": "integer"
+                            },
+                            "follow": {
+                                "type": "boolean"
+                            },
+                            "options": {
+                                "type": "object"
+                            }
+                        },
+                        "required": ["file"]
+                    }
+                }
+            }
+        },
+        {
+            "status": "valid",
+            "normalizedArguments": {
+                "command": "pwd"
+            },
+            "tool": {
+                "id": "external_tool_1",
+                "originalName": "bash",
+                "namespacedName": "external__bash",
+                "description": "Run a shell command",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string"
+                        },
+                        "timeout": {
+                            "type": "integer"
+                        }
+                    },
+                    "required": ["command"]
+                },
+                "sideEffect": "none",
+                "riskLevel": "low",
+                "requiresConfirmation": false,
+                "enabled": true,
+                "sourceTool": {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        }
+                    }
+                }
+            }
+        },
+        {
+            "status": "rejected",
+            "errors": [
+                {
+                    "code": "unknown_tool",
+                    "message": "Unknown external tool: unknown",
+                    "path": []
+                }
+            ],
+            "tool": null
+        }
+    ],
+    "validateParsed": [
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"a\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "a"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "a"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "id": "call_external__bash_2",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"b\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "b"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "b"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"date\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "date"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "date"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_abc",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"123.txt\",\"offset\":10,\"follow\":true}"
+                    },
+                    "validatedArguments": {
+                        "file": "123.txt",
+                        "offset": 10,
+                        "follow": true
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "123.txt",
+                            "offset": 10,
+                            "follow": true
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"data.json\",\"options\":{\"deep\":true,\"levels\":[1,2]}}"
+                    },
+                    "validatedArguments": {
+                        "file": "data.json",
+                        "options": {
+                            "deep": true,
+                            "levels": [1, 2]
+                        }
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "data.json",
+                            "options": {
+                                "deep": true,
+                                "levels": [1, 2]
+                            }
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls -la\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls -la"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls -la"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"echo one\\necho two\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "echo one\necho two"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "echo one\necho two"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__bash_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{}"
+                        }
+                    },
+                    "validation": {
+                        "status": "rejected",
+                        "errors": [
+                            {
+                                "code": "missing_required_field",
+                                "message": "Missing required field: command",
+                                "path": ["command"]
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__read_1",
+                        "type": "function",
+                        "function": {
+                            "name": "read",
+                            "arguments": "{\"file\":\"a.txt\",\"offset\":\"5\"}"
+                        }
+                    },
+                    "validation": {
+                        "status": "rejected",
+                        "errors": [
+                            {
+                                "code": "invalid_type",
+                                "message": "Field offset must be an integer",
+                                "path": ["offset"]
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"date\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "date"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "date"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls > out.txt\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls > out.txt"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls > out.txt"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__bash_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{}"
+                        }
+                    },
+                    "validation": {
+                        "status": "rejected",
+                        "errors": [
+                            {
+                                "code": "missing_required_field",
+                                "message": "Missing required field: command",
+                                "path": ["command"]
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"pwd\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "pwd"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "pwd"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"0123.txt\",\"offset\":7,\"follow\":false}"
+                    },
+                    "validatedArguments": {
+                        "file": "0123.txt",
+                        "offset": 7,
+                        "follow": false
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "0123.txt",
+                            "offset": 7,
+                            "follow": false
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"a.txt\"}"
+                    },
+                    "validatedArguments": {
+                        "file": "a.txt"
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "a.txt"
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"a.txt\"}"
+                    },
+                    "validatedArguments": {
+                        "file": "a.txt"
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "a.txt"
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__bash_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "echo hi"
+                        }
+                    },
+                    "validation": {
+                        "status": "repairable",
+                        "errors": [
+                            {
+                                "code": "invalid_arguments_json",
+                                "message": "Invalid JSON arguments for bash: Unexpected token 'e', \"echo hi\" is not valid JSON",
+                                "path": []
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"a.txt\"}"
+                    },
+                    "validatedArguments": {
+                        "file": "a.txt"
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "a.txt"
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__bash_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "{}"
+                        }
+                    },
+                    "validation": {
+                        "status": "rejected",
+                        "errors": [
+                            {
+                                "code": "missing_required_field",
+                                "message": "Missing required field: command",
+                                "path": ["command"]
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__bash_1",
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "arguments": "{\"command\":\"ls\"}"
+                    },
+                    "validatedArguments": {
+                        "command": "ls"
+                    },
+                    "tool": {
+                        "id": "external_tool_1",
+                        "originalName": "bash",
+                        "namespacedName": "external__bash",
+                        "description": "Run a shell command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "command": {
+                                    "type": "string"
+                                },
+                                "timeout": {
+                                    "type": "integer"
+                                }
+                            },
+                            "required": ["command"]
+                        },
+                        "sideEffect": "none",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "function": {
+                                "name": "bash",
+                                "description": "Run a shell command",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "command": {
+                                            "type": "string"
+                                        },
+                                        "timeout": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "required": ["command"]
+                                }
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "command": "ls"
+                        },
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        },
+        {
+            "validCalls": [],
+            "invalidCalls": [
+                {
+                    "call": {
+                        "id": "call_external__bash_1",
+                        "type": "function",
+                        "function": {
+                            "name": "bash",
+                            "arguments": "[1,2]"
+                        }
+                    },
+                    "validation": {
+                        "status": "repairable",
+                        "errors": [
+                            {
+                                "code": "invalid_arguments_json",
+                                "message": "Invalid JSON arguments for bash: arguments must decode to a JSON object",
+                                "path": []
+                            }
+                        ],
+                        "tool": {
+                            "id": "external_tool_1",
+                            "originalName": "bash",
+                            "namespacedName": "external__bash",
+                            "description": "Run a shell command",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "command": {
+                                        "type": "string"
+                                    },
+                                    "timeout": {
+                                        "type": "integer"
+                                    }
+                                },
+                                "required": ["command"]
+                            },
+                            "sideEffect": "none",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "function": {
+                                    "name": "bash",
+                                    "description": "Run a shell command",
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "command": {
+                                                "type": "string"
+                                            },
+                                            "timeout": {
+                                                "type": "integer"
+                                            }
+                                        },
+                                        "required": ["command"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "validCalls": [
+                {
+                    "id": "call_external__read_1",
+                    "type": "function",
+                    "function": {
+                        "name": "read",
+                        "arguments": "{\"file\":\"x\"}"
+                    },
+                    "validatedArguments": {
+                        "file": "x"
+                    },
+                    "tool": {
+                        "id": "external_tool_2",
+                        "originalName": "read",
+                        "namespacedName": "external__read",
+                        "description": "Read a file",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "file": {
+                                    "type": "string"
+                                },
+                                "offset": {
+                                    "type": "integer"
+                                },
+                                "follow": {
+                                    "type": "boolean"
+                                },
+                                "options": {
+                                    "type": "object"
+                                }
+                            },
+                            "required": ["file"]
+                        },
+                        "sideEffect": "read",
+                        "riskLevel": "low",
+                        "requiresConfirmation": false,
+                        "enabled": true,
+                        "sourceTool": {
+                            "type": "function",
+                            "name": "read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            }
+                        }
+                    },
+                    "validation": {
+                        "status": "valid",
+                        "normalizedArguments": {
+                            "file": "x"
+                        },
+                        "tool": {
+                            "id": "external_tool_2",
+                            "originalName": "read",
+                            "namespacedName": "external__read",
+                            "description": "Read a file",
+                            "parameters": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string"
+                                    },
+                                    "offset": {
+                                        "type": "integer"
+                                    },
+                                    "follow": {
+                                        "type": "boolean"
+                                    },
+                                    "options": {
+                                        "type": "object"
+                                    }
+                                },
+                                "required": ["file"]
+                            },
+                            "sideEffect": "read",
+                            "riskLevel": "low",
+                            "requiresConfirmation": false,
+                            "enabled": true,
+                            "sourceTool": {
+                                "type": "function",
+                                "name": "read",
+                                "description": "Read a file",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        },
+                                        "offset": {
+                                            "type": "integer"
+                                        },
+                                        "follow": {
+                                            "type": "boolean"
+                                        },
+                                        "options": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "required": ["file"]
+                                }
+                            }
+                        }
+                    }
+                }
+            ],
+            "invalidCalls": []
+        }
+    ],
+    "policy": [
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "deny",
+            "code": "tool_denied_by_policy",
+            "reason": "Tool bash is denied by policy."
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "require_confirmation",
+            "reason": "Tool read requires confirmation before execution.",
+            "confirmationPayload": {
+                "toolName": "read",
+                "namespacedName": "external__read",
+                "argumentsPreview": {
+                    "sample": 1
+                },
+                "risk": "low"
+            }
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        },
+        {
+            "status": "allow",
+            "effectiveRisk": "low"
+        }
+    ]
+}

@@ -1,4 +1,5 @@
 import request from 'supertest';
+import http from 'http';
 import { jest } from '@jest/globals';
 
 /**
@@ -690,27 +691,48 @@ describe('turn timeouts and client disconnects', () => {
         const longTimeoutApp = makeApp({ REQUEST_TIMEOUT_MS: 30000 });
         sdkState.hangNextPrompt = true;
 
-        const pending = request(longTimeoutApp)
-            .post('/v1/chat/completions')
-            .set('Authorization', 'Bearer test-key')
-            .set('session-id', 'conv-abort')
-            .send({
+        // The abort has to reach a real socket: supertest's per-request server keeps a
+        // TCPSERVERWRAP handle open when a request is aborted before it completes, which
+        // leaves jest hanging ("did not exit") after the suite has passed. Listening on
+        // an ephemeral port and destroying the raw socket instead reproduces the
+        // disconnect and still lets the server be closed deterministically.
+        const server = http.createServer(longTimeoutApp);
+        await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+        try {
+            const payload = JSON.stringify({
                 model: 'opencode/kimi-k2.5',
                 messages: [{ role: 'user', content: 'hang' }],
                 stream: true
             });
-        pending.end(() => {});
-        await new Promise((resolve) => setTimeout(resolve, 150));
-        pending.abort();
+            const pending = http.request({
+                host: '127.0.0.1',
+                port: server.address().port,
+                path: '/v1/chat/completions',
+                method: 'POST',
+                headers: {
+                    Authorization: 'Bearer test-key',
+                    'session-id': 'conv-abort',
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(payload)
+                }
+            });
+            pending.on('error', () => {});
+            pending.end(payload);
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            pending.destroy();
 
-        // The aborted turn must unwind and hand the conversation back: this second
-        // request would otherwise sit behind the global lock and the turn lock.
-        const second = await chat(longTimeoutApp, {
-            sessionId: 'conv-abort',
-            messages: [{ role: 'user', content: 'after the disconnect' }]
-        });
-        expect(second.statusCode).toEqual(200);
-        expect(contentOf(second)).toContain('reply-1');
+            // The aborted turn must unwind and hand the conversation back: this second
+            // request would otherwise sit behind the global lock and the turn lock.
+            const second = await chat(longTimeoutApp, {
+                sessionId: 'conv-abort',
+                messages: [{ role: 'user', content: 'after the disconnect' }]
+            });
+            expect(second.statusCode).toEqual(200);
+            expect(contentOf(second)).toContain('reply-1');
+        } finally {
+            await new Promise((resolve) => server.close(resolve));
+        }
     }, 10000);
 });
 
