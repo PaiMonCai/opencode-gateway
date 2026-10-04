@@ -190,6 +190,13 @@ mode the id belongs to the upstream and is forwarded untouched.
 In direct mode tools pass through natively; the text contract and the plugin are
 not involved.
 
+**Known edge case kept for parity**: when a stream ends *inside* a tool-call
+block, the filter only drops the stray opening tag — the unterminated payload is
+released as ordinary text (for example `{"name":"ext`). This is the pre-rewrite
+behaviour, verified identical in the rewrite's parity corpus, and it is reachable
+only with tools disabled and a truncated stream. Changing it is a deliberate
+behaviour change and needs its own changelog entry, not a silent fix.
+
 ## 5. Upstream routing
 
 | condition | upstream |
