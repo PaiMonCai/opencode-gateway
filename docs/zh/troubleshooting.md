@@ -128,3 +128,22 @@ docker exec opencode-gateway node -e "import('/home/node/project/plugin/opencode
 ```
 
 若你自建后端（`MANAGE_BACKEND=false`）并手动把插件写进 `plugin` 配置，请把**插件文件本身**加进去，不要加 `tool-policy.js`。
+
+### 怎么确认前置网关（NewAPI 等）有没有把会话 id 转过来
+
+1. `.env` 里临时设 `OPENCODE_PROXY_DEBUG=true`，`docker compose up -d --force-recreate`；
+2. 对同一段对话连发两轮，然后在日志里找这一行：
+
+```json
+{"level":"debug","msg":"Conversation identity resolved","source":"none","header":null,"preview":"","reused":false,
+ "receivedHeaders":"authorization,content-type,x-newapi-chat-id,user-agent"}
+```
+
+| 看到什么 | 含义 | 怎么做 |
+|:--|:--|:--|
+| `source: "header"`、`header: "x-opencode-session"` | **检测到了**，复用生效 | 不用改 |
+| `source: "none"`，且 `receivedHeaders` 里有你网关的会话 id（如 `x-newapi-chat-id`） | 网关确实转发了会话 id，只是**名字不在默认的 11 个里** | 把那个名字加进 `OPENCODE_PROXY_SESSION_HEADERS`（逗号分隔，可只留你需要的） |
+| `source: "none"`，`receivedHeaders` 里没有任何会话类 id | 网关**没有把会话 id 作为请求头转发**（它只存在自己的数据库/日志里） | 只能用推导模式 `OPENCODE_PROXY_SESSION_DERIVE=true` |
+| `source: "derived"` | 推导模式已生效（不需要请求头） | 不用改 |
+
+> 默认识别的 11 个名字（按优先级）：`x-opencode-session`、`x-session-id`、`x-thread-id`、`x-conversation-id`、`x-deepseek-harness-session-id`、`session-id`、`session_id`、`thread-id`、`thread_id`、`conversation-id`、`conversation_id`。

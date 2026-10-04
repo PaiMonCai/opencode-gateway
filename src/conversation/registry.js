@@ -235,6 +235,24 @@ export function createConversationRegistry({
             }
         }
 
+        // One line per turn so an operator can answer "did the gateway in front
+        // pass a conversation id at all, and under which name?". When nothing
+        // matched, the names that did arrive are listed: a proxy usually sends
+        // its own id under a name the default list does not know, and that name
+        // just has to be added to OPENCODE_PROXY_SESSION_HEADERS.
+        logger?.debug?.('Conversation identity resolved', {
+            source: identity.source,
+            header: identity.header,
+            preview: identity.preview,
+            reused: Boolean(entry),
+            ...(identity.source === 'none'
+                ? {
+                      receivedHeaders:
+                          headers && typeof headers === 'object' ? Object.keys(headers).sort().join(',') : ''
+                  }
+                : {})
+        });
+
         // Held for the whole turn, so a concurrent turn on the same conversation
         // cannot use the same upstream session.
         const lock = await store.acquireLock(key, lockWaitMs);

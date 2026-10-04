@@ -746,3 +746,41 @@ describe('resolveConversationSettings', () => {
         expect(settings.reuseEnabled).toBe(true);
     });
 });
+
+describe('identity diagnostics', () => {
+    test('logs which header carried the identity', async () => {
+        const { registry, logger } = makeRegistry();
+        await registry.resolveTurn({
+            headers: { 'x-opencode-session': 'sess-1' },
+            scope: RUNTIME_SCOPE,
+            deliverable: [userMessage('hi')]
+        });
+        const line = logger.records.find((entry) => entry.message === 'Conversation identity resolved');
+        expect(line).toBeTruthy();
+        expect(line.fields).toMatchObject({
+            source: 'header',
+            header: 'x-opencode-session',
+            reused: false
+        });
+        expect(line.fields.receivedHeaders).toBeUndefined();
+    });
+
+    test('lists the headers that arrived when nothing matched', async () => {
+        // The case an operator hits behind a gateway that sends its own id under
+        // an unknown name: the log names it so it can be added to
+        // OPENCODE_PROXY_SESSION_HEADERS and reuse starts working.
+        const { registry, logger } = makeRegistry();
+        await registry.resolveTurn({
+            headers: {
+                'x-newapi-chat-id': 'abc',
+                authorization: 'Bearer k',
+                'content-type': 'application/json'
+            },
+            scope: RUNTIME_SCOPE,
+            deliverable: [userMessage('hi')]
+        });
+        const line = logger.records.find((entry) => entry.message === 'Conversation identity resolved');
+        expect(line.fields.source).toBe('none');
+        expect(line.fields.receivedHeaders).toBe('authorization,content-type,x-newapi-chat-id');
+    });
+});

@@ -137,3 +137,22 @@ Self-check (needs no model credit):
 docker exec opencode-gateway node -e "import('/home/node/project/plugin/opencode-gateway-tool-lock.js').then(async m => { const h = await m.default({client:{session:{get:async()=>({data:{title:'opencode-gateway [tools:*]'}})}}}); console.log(Object.keys(m), Object.keys(h)) })"
 # expect: [ 'default' ] [ 'tool.execute.before', 'config', 'event', 'dispose', 'chat.message', 'chat.params', 'tool.execute.after' ]
 ```
+
+### Checking whether the gateway in front (NewAPI, …) forwards a conversation id
+
+1. Set `OPENCODE_PROXY_DEBUG=true` temporarily and `docker compose up -d --force-recreate`;
+2. Send two turns of the same conversation, then look for this line in the log:
+
+```json
+{"level":"debug","msg":"Conversation identity resolved","source":"none","header":null,"preview":"","reused":false,
+ "receivedHeaders":"authorization,content-type,x-newapi-chat-id,user-agent"}
+```
+
+| What you see | Meaning | What to do |
+|:--|:--|:--|
+| `source: "header"`, `header: "x-opencode-session"` | detected, reuse works | nothing |
+| `source: "none"` and `receivedHeaders` holds your gateway's id (e.g. `x-newapi-chat-id`) | it does forward one, under a **name outside the default 11** | add that name to `OPENCODE_PROXY_SESSION_HEADERS` |
+| `source: "none"` with no conversation-ish id in `receivedHeaders` | the gateway never forwards one as a header | use derivation mode: `OPENCODE_PROXY_SESSION_DERIVE=true` |
+| `source: "derived"` | derivation is active (no header needed) | nothing |
+
+> The default list, in priority order: `x-opencode-session`, `x-session-id`, `x-thread-id`, `x-conversation-id`, `x-deepseek-harness-session-id`, `session-id`, `session_id`, `thread-id`, `thread_id`, `conversation-id`, `conversation_id`.
