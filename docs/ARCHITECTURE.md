@@ -138,6 +138,15 @@ Invariants (these are the product):
    (nothing upstream to close) and sessions a live `previous_response_id` chain
    still references.
 
+Two deliberate, documented limits (fixed values, no environment variable):
+
+- the hard cap on tracked conversations (1000 entries, 16 candidates per derived
+  anchor) wins over an in-flight conversation: an entry holding a turn lock may
+  still be evicted, and the upstream session closed, when the cap is reached;
+- direct turns carry `baseline === null`, which means "nothing to filter", while
+  a failed read on a reused runtime session is `baseline.ok === false` and must
+  answer `503 session_state_unavailable`. Callers must not conflate the two.
+
 ### src/upstreams
 
 ```js
