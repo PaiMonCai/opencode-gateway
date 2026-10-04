@@ -195,10 +195,3 @@ Model names: `opencode/big-pickle`, `gpt5-nano` (auto-resolved to `gpt-5-nano`),
 ## 📄 License
 
 MIT · see [LICENSE](./LICENSE.md)
-
-## 📄 Third-party notices
-
-This project includes portions of code from third-party open-source work. Their
-copyright and license notices are kept in full in
-[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) and ship with every copy, as
-the MIT license requires.

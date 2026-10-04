@@ -1,21 +1,6 @@
-# Third-Party Notices
-
-This project is an independent work derived from **OpenCode2API**, which is
-distributed under the MIT License. The MIT License requires that the original
-copyright notice and permission notice be included in all copies or substantial
-portions of the software, so they are reproduced below.
-
-Everything in this repository outside the notice below is Copyright (c) 2026
-PaiMonCai and licensed under the terms in [LICENSE.md](./LICENSE.md).
-
----
-
-## OpenCode2API
-
-Source: https://github.com/TiaraBasori/OpenCode2API
-
-```
-MIT License
+This distribution includes portions of code originally released under the MIT
+License. The required copyright and permission notice for those portions is
+reproduced below.
 
 Copyright (c) 2026 OpenCode2API Contributors
 
@@ -36,4 +21,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-```

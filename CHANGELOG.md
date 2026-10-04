@@ -3,7 +3,7 @@
 All notable changes to this project will be documented in this file.
 
 > This changelog starts with `3.0.0`, the release that reworked and renamed the
-> project. Third-party notices are in [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md).
+> project.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -17,7 +17,7 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 
 - **Renamed**: package, plugin file (`opencode-gateway-tool-lock.js`), session-title prefix, and the `OPENCODE_GATEWAY_*` environment prefix, with no compatibility aliases for the old names.
 - **Positioning**: the local OpenCode runtime is no longer on the critical path — it serves the free tier, while Go and paid Zen traffic goes straight to OpenCode's own endpoints.
-- **Licensing**: the project is licensed under MIT with its own copyright line; the third-party notices required by the MIT license ship in `THIRD-PARTY-NOTICES.md`.
+- **Licensing**: the project is licensed under MIT with its own copyright line.
 
 ### Added
 

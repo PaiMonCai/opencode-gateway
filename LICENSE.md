@@ -2,9 +2,7 @@ MIT License
 
 Copyright (c) 2026 PaiMonCai
 
-Portions of this software are derived from an MIT-licensed project; the
-required third-party copyright and permission notice is reproduced in full in
-[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) and ships with every copy.
+This distribution includes code under additional notices; see [NOTICE](./NOTICE).
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

@@ -197,7 +197,3 @@ OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
 ## 📄 许可证
 
 MIT · 详见 [LICENSE](./LICENSE.md)
-
-## 📄 第三方声明
-
-本项目包含源自第三方开源项目的部分代码，其版权与许可声明完整保留在 [THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md)，随每个副本一同分发（MIT 许可要求）。
