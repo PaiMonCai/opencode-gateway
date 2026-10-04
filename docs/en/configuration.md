@@ -4,6 +4,35 @@ Priority: **env vars > config.json > defaults**.
 
 Env vars use the `OPENCODE_` prefix; config.json uses the short names (see tables).
 
+### Three tiers of settings
+
+- **Core (worth knowing)**: `API_KEY` and `OPENCODE_SERVER_PASSWORD` (set both);
+  `OPENCODE_ZEN_API_KEY` (only for the Go subscription / paid Zen);
+  `OPENCODE_PROXY_PORT`; `PUID`/`PGID` (NAS ownership).
+- **Common**: `OPENCODE_PROXY_OPS`, `OPENCODE_PROXY_STORAGE_CLEANUP`,
+  `OPENCODE_DISABLE_TOOLS`, `OPENCODE_INTERNAL_ALLOWED_TOOLS`,
+  `OPENCODE_PROXY_SESSION_DERIVE`, `OPENCODE_PROXY_REQUEST_TIMEOUT_MS`,
+  `OPENCODE_PROXY_UPSTREAM_PROXY`, `OPENCODE_PROXY_DEBUG`.
+- **Advanced**: everything else in the tables below (upstream URLs, event
+  timeouts, retries, prompt mode, session header names, …). The defaults are
+  already tuned for the free tier; you normally never touch them.
+
+### Merged and removed settings
+
+These names **still work** (setting one takes effect) but print a deprecation
+warning at startup naming the replacement, and they no longer appear in the
+regular tables above.
+
+- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`, `OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → use `OPENCODE_PROXY_OPS=off|health|full`
+- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`, `OPENCODE_PROXY_CLEANUP_INTERVAL_MS`, `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → use `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
+- `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` → removed: the free tier's gate is a client identity, so it can **only** be served by the runtime
+- `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` → removed: the counters are always collected; expose them with `OPENCODE_PROXY_OPS=full`
+- `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` → removed: there is one policy (same-name tools are namespaced)
+- `OPENCODE_TOOL_DISCOVERY_FIXTURE` → removed: a test-only knob
+
+> Exactly one behaviour changed: `/health/details` now **always** carries the
+> `internal_tools.metrics` counters (the removed switch used to null them).
+
 ## 🔧 Environment Variables
 
 ### Service & Auth
@@ -27,11 +56,8 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 |:---------|:------------|:-------|:-----|
 | `OPENCODE_DISABLE_TOOLS` | `DISABLE_TOOLS` | `true` | Disable OpenCode built-in tools |
 | `OPENCODE_EXTERNAL_TOOLS_MODE` | `EXTERNAL_TOOLS_MODE` | `proxy-bridge` | External tool bridge mode, only `proxy-bridge` is supported |
-| `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` | `EXTERNAL_TOOLS_CONFLICT_POLICY` | `namespace` | Same-name conflict isolation policy, only `namespace` is supported |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | `INTERNAL_ALLOWED_TOOLS` | (empty) | Built-in tools allowed when request has no `tools`, comma-separated |
 | `OPENCODE_INTERNAL_WEB_FETCH_ENABLED` | `INTERNAL_WEB_FETCH_ENABLED` | `false` | Legacy switch: allows `web_fetch` by default when no allowlist is set |
-| `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` | `INTERNAL_TOOL_METRICS_ENABLED` | `true` | Emit allowlist mode debug/metrics logs |
-| `OPENCODE_TOOL_DISCOVERY_FIXTURE` | `INTERNAL_TOOL_DISCOVERY_FIXTURE` | (empty) | Fixed backend tool ID list for tests/debug, comma-separated |
 
 ### Prompts & Sessions
 
@@ -39,9 +65,7 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 |:---------|:------------|:-------|:-----|
 | `OPENCODE_PROXY_PROMPT_MODE` | `PROMPT_MODE` | `standard` | `standard` or `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `OMIT_SYSTEM_PROMPT` | `false` | Ignore incoming system prompt |
-| `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS` | `AUTO_CLEANUP_CONVERSATIONS` | `false` | Auto clean session storage |
-| `OPENCODE_PROXY_CLEANUP_INTERVAL_MS` | `CLEANUP_INTERVAL_MS` | `43200000` | Cleanup interval (ms) |
-| `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` | `CLEANUP_MAX_AGE_MS` | `86400000` | Max session age (ms) |
+| `OPENCODE_PROXY_STORAGE_CLEANUP` | `STORAGE_CLEANUP` | `off` | Sweep stored conversations: `off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_REQUEST_TIMEOUT_MS` | `REQUEST_TIMEOUT_MS` | `180000` | Request timeout (ms) |
 | `OPENCODE_PROXY_SESSION_REUSE` | `SESSION_REUSE_ENABLED` | `true` | Reuse one backend session per client conversation header |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `SESSION_TTL_MS` | `1800000` | Close an idle conversation after this long (ms) |
@@ -50,7 +74,6 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 | `OPENCODE_PROXY_DIRECT` | `DIRECT_ENABLED` | `true` | Talk to OpenCode's own OpenAI-compatible endpoints (Go / paid Zen) |
 | `OPENCODE_PROXY_DIRECT_GO_URL` | `DIRECT_GO_BASE_URL` | `https://opencode.ai/zen/go/v1` | Go subscription endpoint |
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `DIRECT_ZEN_BASE_URL` | `https://opencode.ai/zen/v1` | Paid Zen endpoint |
-| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `DIRECT_FREE_VIA_RUNTIME` | `true` | Keep free-tier models on the local runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `DIRECT_FALLBACK_TO_RUNTIME` | `true` | Fall back to the runtime when the direct upstream refuses (401/403) or is unreachable |
 | `OPENCODE_PROXY_UPSTREAM_PROXY` | `UPSTREAM_PROXY` | (empty) | Proxy for upstream egress: `socks5h://`, `socks5://`, `socks4a://`, `socks4://`, `http://`, `https://` (credentials allowed as `user:pass@`); the standard `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` are read as fallbacks |
 | `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME` | `UPSTREAM_PROXY_FOR_RUNTIME` | `true` | Hand the same proxy to the managed runtime, so the free tier's own egress uses it too |
@@ -164,10 +187,7 @@ What the direct path covers:
 
 | Env var | config.json | Default | Description |
 |:---------|:------------|:-------|:-----|
-| `OPENCODE_HEALTH_DETAILS_ENABLED` | `HEALTH_DETAILS_ENABLED` | `true` | Expose `/health/details` |
-| `OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH` | `HEALTH_DETAILS_REQUIRE_AUTH` | `true` | `/health/details` requires Bearer auth |
-| `OPENCODE_METRICS_ENABLED` | `METRICS_ENABLED` | `false` | Expose `/metrics` |
-| `OPENCODE_METRICS_REQUIRE_AUTH` | `METRICS_REQUIRE_AUTH` | `true` | `/metrics` requires Bearer auth |
+| `OPENCODE_PROXY_OPS` | `OPS` | `health` | Operational endpoints: `off` (only `/health`), `health` (adds `/health/details`) or `full` (adds `/metrics`); both detail endpoints always require the bearer key |
 | `OPENCODE_PROXY_DEBUG` | `DEBUG` | `false` | Debug logs |
 | `OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS` | - | `30000` | First-delta timeout for streaming |
 | `OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS` | - | `8000` | Idle timeout for streaming |
@@ -181,15 +201,11 @@ What the direct path covers:
     "BIND_HOST": "0.0.0.0",
     "DISABLE_TOOLS": true,
     "EXTERNAL_TOOLS_MODE": "proxy-bridge",
-    "EXTERNAL_TOOLS_CONFLICT_POLICY": "namespace",
     "INTERNAL_ALLOWED_TOOLS": ["web_fetch"],
-    "INTERNAL_TOOL_METRICS_ENABLED": true,
     "USE_ISOLATED_HOME": false,
     "PROMPT_MODE": "standard",
     "OMIT_SYSTEM_PROMPT": false,
-    "AUTO_CLEANUP_CONVERSATIONS": false,
-    "CLEANUP_INTERVAL_MS": 43200000,
-    "CLEANUP_MAX_AGE_MS": 86400000,
+    "STORAGE_CLEANUP": "off",
     "REQUEST_TIMEOUT_MS": 180000,
     "DEBUG": false,
     "OPENCODE_SERVER_URL": "http://127.0.0.1:10001",
@@ -217,7 +233,7 @@ OpenCode Zen free models only accept requests whose tool list matches the offici
 - When a request has **no** `tools`, the proxy enters internal allowlist mode. Only tools in `OPENCODE_INTERNAL_ALLOWED_TOOLS` are allowed.
 - Tool names are compared ignoring case and underscores, so `web_fetch` matches OpenCode's `webfetch`.
 - `OPENCODE_INTERNAL_WEB_FETCH_ENABLED=true` is a legacy shortcut: treated as `web_fetch` when no allowlist is set.
-- With `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED=true`, mode selection, tool discovery, match results, and fallback reasons are logged. Tool return content is not logged.
+- The internal tool counters (mode selection, tool discovery, match results, fallback reasons) are **always collected** and exported on `/metrics`; tool return content is never logged.
 
 ### Request-level Allowlist Override
 

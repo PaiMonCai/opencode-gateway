@@ -51,6 +51,11 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 - **Docker Startup Hang (#17)**: The entrypoint's health probe ran `curl` without a timeout against `/health`, which is not an OpenCode API route; a connection made while the backend was still booting never returned. The proxy now starts and supervises the backend itself (`MANAGE_BACKEND` defaults to `true`) and probes `/global/health`.
 - **Backend Password**: `OPENCODE_SERVER_PASSWORD` and `OPENCODE_ZEN_API_KEY` are passed to the managed backend as environment variables; the old `--password` flag does not exist and kept the backend from starting.
 
+### Changed
+
+- **The configuration surface was converged.** Four switches that steered an endpoint pair or a single-value policy were merged into two enums — `OPENCODE_PROXY_OPS=off|health|full` replaces the health/metrics on/off + auth booleans, and `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily` replaces the cleanup switch and its two timings — and four knobs were dropped outright (`OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME`, `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED`, `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY`, `OPENCODE_TOOL_DISCOVERY_FIXTURE`) because they had a single possible value or were test-only. Every old name still works: it is honoured, and the entry point logs a deprecation line naming the replacement. Zero-configuration behaviour is unchanged, and the startup banner prints 26 lines instead of 35.
+- **One behaviour change**: `/health/details` always reports the internal tool counters now that their switch is gone (they were already always collected).
+
 ### Removed
 
 - **Third-party notice**: the original code this project was derived from has been fully replaced — `src/**`, `plugin/**`, `index.js` and the test suites are new implementations, and the packaging layer was rewritten from scratch (similarity to the original dropped to 38–54%, remaining overlap being unavoidable configuration vocabulary such as `.editorconfig`/`.gitignore` tokens and Docker/compose directives). With no substantial portion of the original software left, `NOTICE` was removed and `LICENSE.md` is now the only licensing document.

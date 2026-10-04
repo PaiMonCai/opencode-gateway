@@ -4,6 +4,25 @@
 
 环境变量统一使用 `OPENCODE_` 前缀；config.json 使用对应的短名（见下表）。
 
+### 变量分三档
+
+- **核心（必须知道）**：`API_KEY`、`OPENCODE_SERVER_PASSWORD`（这两个建议都设）；`OPENCODE_ZEN_API_KEY`（要用 Go 订阅 / 付费 Zen 才需要）；`OPENCODE_PROXY_PORT`；`PUID`/`PGID`（NAS 权限）。
+- **常用**：`OPENCODE_PROXY_OPS`、`OPENCODE_PROXY_STORAGE_CLEANUP`、`OPENCODE_DISABLE_TOOLS`、`OPENCODE_INTERNAL_ALLOWED_TOOLS`、`OPENCODE_PROXY_SESSION_DERIVE`、`OPENCODE_PROXY_REQUEST_TIMEOUT_MS`、`OPENCODE_PROXY_UPSTREAM_PROXY`、`OPENCODE_PROXY_DEBUG`。
+- **高级**：表里其余项（上游 URL、事件超时、重试、提示词模式、会话头名单等），默认值已按免费档调好，通常不需要碰。
+
+### 已收敛 / 已废弃的变量
+
+下面这些名字**仍然可用**（设置了会生效），但启动时会打印一条废弃警告并给出替代写法；它们不再出现在本页的常规表格里。
+
+- `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`、`OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → 用 `OPENCODE_PROXY_OPS=off|health|full`
+- `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`、`OPENCODE_PROXY_CLEANUP_INTERVAL_MS`、`OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → 用 `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
+- `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` → 已移除：免费档的服务端闸门是“官方客户端身份”，**只能**由 runtime 代发，直连必然 403
+- `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` → 已移除：内部工具计数始终收集；要用 `OPENCODE_PROXY_OPS=full` 暴露 `/metrics`
+- `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` → 已移除：只有一种策略（同名工具加命名空间）
+- `OPENCODE_TOOL_DISCOVERY_FIXTURE` → 已移除：测试专用开关
+
+> 行为差异只有一处：`/health/details` 现在**总是**带上 `internal_tools.metrics` 计数（以前那个开关能把它置为 `null`）。
+
 ## 🔧 环境变量
 
 ### 服务与认证
@@ -27,11 +46,8 @@
 |:---------|:------------|:-------|:-----|
 | `OPENCODE_DISABLE_TOOLS` | `DISABLE_TOOLS` | `true` | 禁用 OpenCode 内置工具 |
 | `OPENCODE_EXTERNAL_TOOLS_MODE` | `EXTERNAL_TOOLS_MODE` | `proxy-bridge` | 外部工具桥接模式，当前仅支持 `proxy-bridge` |
-| `OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY` | `EXTERNAL_TOOLS_CONFLICT_POLICY` | `namespace` | 同名工具冲突隔离策略，当前仅支持 `namespace` |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | `INTERNAL_ALLOWED_TOOLS` | (空) | 请求未带 `tools` 时放行的内置工具，逗号分隔 |
 | `OPENCODE_INTERNAL_WEB_FETCH_ENABLED` | `INTERNAL_WEB_FETCH_ENABLED` | `false` | 旧开关：未显式配置 allowlist 时，启用后默认放行 `web_fetch` |
-| `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED` | `INTERNAL_TOOL_METRICS_ENABLED` | `true` | 输出 allowlist 模式的调试/指标日志 |
-| `OPENCODE_TOOL_DISCOVERY_FIXTURE` | `INTERNAL_TOOL_DISCOVERY_FIXTURE` | (空) | 测试/调试用固定后端工具 ID 列表，逗号分隔 |
 
 ### 提示词与会话
 
@@ -39,9 +55,7 @@
 |:---------|:------------|:-------|:-----|
 | `OPENCODE_PROXY_PROMPT_MODE` | `PROMPT_MODE` | `standard` | `standard` 或 `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `OMIT_SYSTEM_PROMPT` | `false` | 忽略传入的 system prompt |
-| `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS` | `AUTO_CLEANUP_CONVERSATIONS` | `false` | 自动清理会话存储 |
-| `OPENCODE_PROXY_CLEANUP_INTERVAL_MS` | `CLEANUP_INTERVAL_MS` | `43200000` | 清理间隔（毫秒） |
-| `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` | `CLEANUP_MAX_AGE_MS` | `86400000` | 会话最大保留时间（毫秒） |
+| `OPENCODE_PROXY_STORAGE_CLEANUP` | `STORAGE_CLEANUP` | `off` | 会话存储清理：`off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_REQUEST_TIMEOUT_MS` | `REQUEST_TIMEOUT_MS` | `180000` | 请求超时（毫秒） |
 | `OPENCODE_PROXY_SESSION_REUSE` | `SESSION_REUSE_ENABLED` | `true` | 客户端带会话标识头时复用同一后端会话 |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `SESSION_TTL_MS` | `1800000` | 会话空闲多久后关闭（毫秒） |
@@ -50,7 +64,6 @@
 | `OPENCODE_PROXY_DIRECT` | `DIRECT_ENABLED` | `true` | 直接请求 OpenCode 自有的 OpenAI 兼容端点（Go 订阅 / 付费 Zen） |
 | `OPENCODE_PROXY_DIRECT_GO_URL` | `DIRECT_GO_BASE_URL` | `https://opencode.ai/zen/go/v1` | Go 订阅端点 |
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `DIRECT_ZEN_BASE_URL` | `https://opencode.ai/zen/v1` | 付费 Zen 端点 |
-| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `DIRECT_FREE_VIA_RUNTIME` | `true` | 免费档模型仍交由本地 runtime 代发 |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `DIRECT_FALLBACK_TO_RUNTIME` | `true` | 直连被拒绝（401/403）或网络失败时回退 runtime |
 | `OPENCODE_PROXY_UPSTREAM_PROXY` | `UPSTREAM_PROXY` | (空) | 上游出站代理：`socks5h://`、`socks5://`、`socks4a://`、`socks4://`、`http://`、`https://`（支持 `user:pass@`）；也识别标准 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` |
 | `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME` | `UPSTREAM_PROXY_FOR_RUNTIME` | `true` | 把同一个代理也交给托管的 runtime（免费档的出站同样需要代理时保持开启） |
@@ -149,10 +162,7 @@ ALL_PROXY=socks5h://10.0.0.9:1080
 
 | 环境变量 | config.json | 默认值 | 说明 |
 |:---------|:------------|:-------|:-----|
-| `OPENCODE_HEALTH_DETAILS_ENABLED` | `HEALTH_DETAILS_ENABLED` | `true` | 是否暴露 `/health/details` |
-| `OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH` | `HEALTH_DETAILS_REQUIRE_AUTH` | `true` | `/health/details` 是否要求 Bearer 认证 |
-| `OPENCODE_METRICS_ENABLED` | `METRICS_ENABLED` | `false` | 是否暴露 `/metrics` |
-| `OPENCODE_METRICS_REQUIRE_AUTH` | `METRICS_REQUIRE_AUTH` | `true` | `/metrics` 是否要求 Bearer 认证 |
+| `OPENCODE_PROXY_OPS` | `OPS` | `health` | 运维端点：`off`（只留 `/health`）/ `health`（加 `/health/details`）/ `full`（再加 `/metrics`）；两个详情端点始终要求 Bearer |
 | `OPENCODE_PROXY_DEBUG` | `DEBUG` | `false` | 调试日志 |
 | `OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS` | - | `30000` | 流式响应首个 delta 的超时 |
 | `OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS` | - | `8000` | 流式响应的空闲超时 |
@@ -166,15 +176,11 @@ ALL_PROXY=socks5h://10.0.0.9:1080
     "BIND_HOST": "0.0.0.0",
     "DISABLE_TOOLS": true,
     "EXTERNAL_TOOLS_MODE": "proxy-bridge",
-    "EXTERNAL_TOOLS_CONFLICT_POLICY": "namespace",
     "INTERNAL_ALLOWED_TOOLS": ["web_fetch"],
-    "INTERNAL_TOOL_METRICS_ENABLED": true,
     "USE_ISOLATED_HOME": false,
     "PROMPT_MODE": "standard",
     "OMIT_SYSTEM_PROMPT": false,
-    "AUTO_CLEANUP_CONVERSATIONS": false,
-    "CLEANUP_INTERVAL_MS": 43200000,
-    "CLEANUP_MAX_AGE_MS": 86400000,
+    "STORAGE_CLEANUP": "off",
     "REQUEST_TIMEOUT_MS": 180000,
     "DEBUG": false,
     "OPENCODE_SERVER_URL": "http://127.0.0.1:10001",
@@ -202,7 +208,7 @@ OpenCode Zen 免费模型只接受工具列表与官方客户端一致的请求�
 - 请求 **未传入** `tools` 时，代理进入 internal allowlist 模式，只允许 `OPENCODE_INTERNAL_ALLOWED_TOOLS` 声明的内置工具。
 - 工具名比较时忽略大小写和下划线，`web_fetch` 等同于 OpenCode 的 `webfetch`。
 - `OPENCODE_INTERNAL_WEB_FETCH_ENABLED=true` 是兼容旧配置的快捷方式：未显式配置 allowlist 时视为 `web_fetch`。
-- `OPENCODE_INTERNAL_TOOL_METRICS_ENABLED=true` 时输出模式选择、工具发现、命中结果和降级原因的日志，不记录工具返回内容。
+- 内部工具计数（模式选择、工具发现、命中结果、降级原因）**始终收集**，只在 `/metrics` 暴露；日志里不记录工具返回内容。
 
 ### 请求级 allowlist 覆盖
 

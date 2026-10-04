@@ -23,6 +23,14 @@ const logger = createLogger({
     debug: config.DEBUG
 });
 
+// Settings a merged knob replaced stay honoured, but the operator should know:
+// one line per deprecated name, with the name to use instead.
+for (const deprecation of config.DEPRECATIONS) {
+    logger.warn(
+        `[Proxy] Deprecated setting ${deprecation.name} (${deprecation.source}) — ${deprecation.message}`
+    );
+}
+
 const backend = createBackendManager({ config, logger });
 const { app } = buildRuntime({
     config,

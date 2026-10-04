@@ -193,7 +193,6 @@ describe('config validation', () => {
         ['OPENCODE_PROXY_DEBUG', 'maybe'],
         ['OPENCODE_PROXY_PROMPT_MODE', 'fancy'],
         ['OPENCODE_EXTERNAL_TOOLS_MODE', 'native'],
-        ['OPENCODE_EXTERNAL_TOOLS_CONFLICT_POLICY', 'rename'],
         ['OPENCODE_SERVER_URL', 'not-a-url'],
         ['OPENCODE_SERVER_URL', 'ftp://example.com']
     ])('fails fast on %s=%s', (name, value) => {
@@ -276,11 +275,13 @@ describe('describeConfig', () => {
         expect(banner).toContain('  - Zen API Key: Configured');
     });
 
-    test('every field declares a key, at least one env var and a type', () => {
+    test('every field declares a key and a type, and reads env names or says why not', () => {
         for (const field of CONFIG_FIELDS) {
             expect(typeof field.key).toBe('string');
-            expect(field.env.length).toBeGreaterThan(0);
             expect(typeof field.type).toBe('string');
+            // A field either reads environment names or records why it no longer
+            // does (a merged or dropped setting), so nothing disappears silently.
+            if (field.env.length === 0) expect(typeof field.removed).toBe('string');
         }
     });
 });
@@ -323,5 +324,42 @@ describe('config.json files', () => {
         const config = loadConfig({ env: {}, file: '/nonexistent/definitely/not/here.json' });
 
         expect(config.PORT).toBe(10000);
+    });
+});
+
+describe('deprecated and removed settings', () => {
+    test('a removed setting is reported, ignored, and does not break startup', () => {
+        const config = loadConfig({
+            env: { API_KEY: 'k', OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME: 'false' }
+        });
+        expect(config.DIRECT_FREE_VIA_RUNTIME).toBe(true);
+        expect(config.DEPRECATIONS.map((entry) => entry.name)).toContain(
+            'OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME'
+        );
+    });
+
+    test('a merged setting still works but points at its replacement', () => {
+        const config = loadConfig({ env: { API_KEY: 'k', OPENCODE_METRICS_ENABLED: 'true' } });
+        expect(config.METRICS_ENABLED).toBe(true);
+        const entry = config.DEPRECATIONS.find((item) => item.name === 'OPENCODE_METRICS_ENABLED');
+        expect(entry?.message).toContain('OPENCODE_PROXY_OPS');
+    });
+
+    test('the merged enums drive the legacy keys when nothing overrides them', () => {
+        expect(loadConfig({ env: { API_KEY: 'k', OPENCODE_PROXY_OPS: 'off' } }).METRICS_ENABLED).toBe(false);
+        expect(loadConfig({ env: { API_KEY: 'k', OPENCODE_PROXY_OPS: 'full' } }).METRICS_ENABLED).toBe(true);
+        const hourly = loadConfig({ env: { API_KEY: 'k', OPENCODE_PROXY_STORAGE_CLEANUP: 'hourly' } });
+        expect(hourly.AUTO_CLEANUP_CONVERSATIONS).toBe(true);
+        expect(hourly.CLEANUP_INTERVAL_MS).toBe(3600000);
+        expect(loadConfig({ env: { API_KEY: 'k' } }).DEPRECATIONS).toEqual([]);
+    });
+
+    test('a config.json key of a merged setting is reported too', () => {
+        const config = loadConfig({
+            env: { API_KEY: 'k' },
+            file: { OPS: 'full', METRICS_REQUIRE_AUTH: true }
+        });
+        expect(config.OPS).toBe('full');
+        expect(config.DEPRECATIONS.map((entry) => entry.source)).toContain('config.json');
     });
 });

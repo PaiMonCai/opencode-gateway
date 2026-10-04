@@ -7,7 +7,7 @@
 
 import fs from 'node:fs';
 
-import { CONFIG_FIELDS, ConfigError, coerceField, isUnset } from './schema.js';
+import { CONFIG_FIELDS, ConfigError, collectDeprecations, coerceField, isUnset } from './schema.js';
 
 /**
  * Where the file half of the configuration comes from.
@@ -142,6 +142,10 @@ export function loadConfig({ env = process.env, file = null } = {}) {
     for (const field of CONFIG_FIELDS) {
         resolved[field.key] = resolveField(field, env, fileValues, resolved);
     }
+
+    // Settings the operator still uses that a merged knob replaced: reported by
+    // the entry point at startup rather than silently ignored.
+    resolved.DEPRECATIONS = collectDeprecations(env, fileValues);
 
     for (const [key, value] of Object.entries(resolved)) {
         if (Array.isArray(value)) resolved[key] = Object.freeze([...value]);

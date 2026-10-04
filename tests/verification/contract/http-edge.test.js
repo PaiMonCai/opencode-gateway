@@ -192,17 +192,25 @@ describe('§7 operational surfaces', () => {
         });
     });
 
-    test('/health/details reports metrics as null when they are disabled', async () => {
+    test('/health/details always reports the internal tool counters', async () => {
+        // Internal tool metrics are always collected now: the switch that used
+        // to null them out was a removed setting (they are cheap counters, and
+        // `/metrics` is the endpoint that decides whether they are exported).
         const { http } = await assembly({
             env: {
                 OPENCODE_HEALTH_DETAILS_ENABLED: 'true',
                 OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH: 'false',
-                OPENCODE_INTERNAL_TOOL_METRICS_ENABLED: 'false'
+                OPENCODE_PROXY_OPS: 'health'
             }
         });
         const res = await http.get('/health/details');
         expect(res.status).toBe(200);
-        expect(res.body.internal_tools.metrics).toBeNull();
+        expect(res.body.internal_tools.metrics).toEqual(
+            expect.objectContaining({
+                internalAllowlistRequests: expect.any(Number),
+                externalBridgeRequests: expect.any(Number)
+            })
+        );
     });
 
     test('/metrics is 404 while disabled and 401 without auth when enabled', async () => {

@@ -115,8 +115,11 @@ describe('§5 routing matrix', () => {
         expect(directRequests).toHaveLength(0);
     });
 
-    test('DIRECT_FREE_VIA_RUNTIME=false lets a -free model go direct', async () => {
-        const { http, directRequests } = await assembly({
+    test('a -free model stays on the runtime even when the removed switch asks otherwise', async () => {
+        // The switch is gone: the free tier's gate is a client identity, so a
+        // direct call cannot work. Setting the old name is reported at startup
+        // and must not change the routing.
+        const { http, fake, directRequests } = await assembly({
             env: { ...DIRECT_ENV, OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME: 'false' }
         });
         const res = await http
@@ -124,8 +127,8 @@ describe('§5 routing matrix', () => {
             .send({ model: 'opencode/mystery-free', messages: [USER] });
 
         expect(res.status).toBe(200);
-        expect(directRequests).toHaveLength(1);
-        expect(directRequests[0].url).toBe('/zen/v1/chat/completions');
+        expect(fake.calls.prompts).toHaveLength(1);
+        expect(directRequests).toHaveLength(0);
     });
 
     test('a plain direct 402/429/500 is relayed verbatim, not taxonomy-wrapped', async () => {
