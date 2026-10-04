@@ -6,13 +6,14 @@ and `docs/ARCHITECTURE.md` §2. Written by the verification role, which never
 modified `src/**`: every defect below is reported with a reproduction, not a fix.
 
 - **Verdict**: the assembled gateway matches the published contract on every
-  item that could be exercised offline. Nine contract deviations were found;
-  eight were fixed during verification (each probe now asserts the fixed
-  behaviour), one remains open (`FINDING-11`, see §9) and one pre-existing
-  throughput limit was ruled a documented behaviour (`FINDING-10`).
+  item that could be exercised offline. Ten contract deviations were found: nine
+  were fixed in code (`FINDING-1..4,6,7,8,9,11` — every probe asserts the fixed
+  behaviour and no `test.failing` wrapper remains), `FINDING-5` was ruled
+  intentional and is now asserted as behaviour, and one pre-existing throughput
+  limit (`FINDING-10`) was ruled a documented behaviour.
 - **Gates**: `npm run typecheck` 0 errors · `npm run lint` clean ·
   `npm run format:check` clean · `npm test` 625 · `npm run test:contract` 132 ·
-  `npm run test:verify` 229.
+  `npm run test:verify` 244 (23 suites).
 - **Environment**: no OpenCode runtime and no `opencode` CLI in this sandbox
   (§8), so no real turn was executed end to end; the real *direct* upstream was
   reachable and **was** exercised (§7).
@@ -25,7 +26,7 @@ verification role):
 | Suite | Files | Cases | What it pins |
 |:--|:--|:--|:--|
 | `tests/verification/modules/**` | 14 | 126 | Conversation identity/store/planner/baseline and the upstream clients **in isolation**, against ARCHITECTURE §2's 8 invariants and the routing matrix |
-| `tests/verification/contract/**` | 8 | 103 | The **assembled app** over real HTTP (`BEHAVIOUR-SPEC` §1–§8), endpoints, SSE streams, error semantics, tool bridge, plugin policy |
+| `tests/verification/contract/**` | 9 | 118 | The **assembled app** over real HTTP (`BEHAVIOUR-SPEC` §1–§8), endpoints, SSE streams, error semantics, tool bridge, plugin policy |
 | `tests/verification/smoke/*.mjs` | 2 | — | Real upstream direct smoke and the real-runtime environment check (not part of CI) |
 
 Method and independence:
@@ -44,8 +45,9 @@ Method and independence:
   the pass);
 - convention used for defects: the suite asserts the **expected** behaviour; a
   defect that was not fixed yet is wrapped in `test.failing(...)` so it stays
-  green while the defect is present and turns red the moment it is fixed. One
-  such wrapper remains (`FINDING-11`).
+  green while the defect is present and turns red the moment it is fixed. As of
+  commit `9a0a21a` **no `test.failing` wrapper remains**: every finding was fixed
+  and its probe flipped to assert the fixed behaviour.
 
 ## 2. Gates
 
@@ -56,7 +58,7 @@ Method and independence:
 | `npm run format:check` | clean |
 | `npm test` (unit) | 26 suites / 625 tests passed |
 | `npm run test:contract` | 6 suites / 132 tests passed |
-| `npm run test:verify` | 22 suites / 229 tests passed |
+| `npm run test:verify` | 23 suites / 244 tests passed |
 | `npm run test:all` | all three phases, exit 0 |
 
 `npm run test:verify` must run under `NODE_OPTIONS=--experimental-vm-modules`
@@ -161,8 +163,10 @@ suite in this repository, which is pre-existing and not a defect of the rewrite.
 `504 timeout` · `402 insufficient_quota` · `429 rate_limit_exceeded` ·
 `400/404` envelopes · `503 conversation_busy` (verified on `/v1/responses`) ·
 `503 session_state_unavailable` (chat and responses) · `response.failed` on a
-post-header failure. Deviations found: `FINDING-11` (500 body) and, historically,
-`FINDING-9` (responses 503 rewritten to 502). See §9.
+post-header failure. Deviations found and fixed: `FINDING-11` (500 body leaked the
+internal error class) and `FINDING-9` (responses 503 rewritten to 502). See §9.
+`docs/BEHAVIOUR-SPEC.md` §6's 500 row was aligned with the api-reference wording
+(`server_error` / `internal_error`) in the same fix.
 
 ### §7 Operational surfaces — verified
 
@@ -230,7 +234,7 @@ and for hollow assertions.
   `parser-foreign-formats` 69/69).
 - No `skip`/`only`/`todo` markers and no placeholder assertions exist anywhere in
   `tests/unit` or `tests/contract`; the only intentional `test.failing` is the
-  open `FINDING-11`.
+  wrapper for an open finding as of `9a0a21a`.
 - No other test file disappeared: the file-level diff against `4c4e42f^` shows
   only the three moves, the new contract/verification files and the e2e smoke.
 
@@ -262,8 +266,13 @@ Evidence (`node tests/verification/smoke/real-runtime-smoke.mjs`):
 [evidence] runtime health http://127.0.0.1:4096/global/health -> unreachable (ECONNREFUSED)
 [evidence] rewritten app GET /v1/models -> HTTP 200 (upstream catalogs fallback)
 [evidence] rewritten app POST /v1/chat/completions (opencode-go/minimax-m3)
-           -> HTTP 500 {"error":{"message":"fetch failed","type":"internal_error","code":"TypeError"}}
+           -> HTTP 500 {"error":{"message":"Internal server error","type":"server_error","code":"internal_error"}}
 ```
+
+The last line was re-run after the `FINDING-11` fix: on the real transport
+failure the gateway now answers the documented 500 body, so this smoke doubles
+as the real-link confirmation of that fix (before it, the same line read
+`{"message":"fetch failed","type":"internal_error","code":"TypeError"}`).
 
 So a real chat/responses turn cannot be exercised in this sandbox. Exclusion
 method — this is an environment problem, not a rewrite regression:
@@ -302,28 +311,36 @@ violated in a realistic path; **minor** = contract deviation on an edge;
 | 7 | minor | `input: ""` accepted, opened an upstream session for an empty turn | BEHAVIOUR-SPEC §3 “missing/empty → 400” | `contract/responses.test.js › [FINDING-7 fixed] …` |
 | 8 | major | empty answer text leaked `JSON.stringify(sdkResult)` as the answer (`{"parts":[]}`) | BEHAVIOUR-SPEC §3 “empty output text → empty `output` array” | `contract/responses.test.js › [FINDING-8 fixed] …` |
 | 9 | major | responses baseline failure answered **502 server_error** instead of **503 session_state_unavailable** | §6 + api-reference §503 | `contract/errors-and-locking.test.js › [FINDING-9 fixed] …` |
+| 11 | major | an unexpected failure of ours answered `{"message":"fetch failed","type":"internal_error","code":"TypeError"}` (constructor name leaked; the streamed `response.failed` payload carried `code:"Object"`) | api-reference §500 + BEHAVIOUR-SPEC §6 | `contract/errors-and-locking.test.js › [FINDING-11 fixed] …`, plus the independent suite `contract/error-sanitization.test.js` |
 
-Also fixed: `FINDING-5` (echo-skip semantics) was ruled intentional and is now
-asserted as “skip, and report a mismatch against `replyDigest` at debug level”;
-the tool-contract reminder (`externalToolContext.reminder`) regression is
+### FINDING-11 — fixed in `9a0a21a` (independently re-verified)
+
+The fix splits the default branch by *whose* failure it is: a built-in JS error
+class (or a nameless value) is “ours” and answers the documented body
+`{"message":"Internal server error","type":"server_error","code":"internal_error"}`,
+while a failure the runtime named keeps its message and code so the turn stays
+diagnosable. `docs/BEHAVIOUR-SPEC.md` §6's 500 row was aligned with the
+api-reference wording in the same commit.
+
+Independent re-verification (`tests/verification/contract/error-sanitization.test.js`,
+15 cases, driven through the assembled app over HTTP):
+
+| Property | Cases | Result |
+|:--|:--|:--|
+| our own failures are sanitized | `Error`, `TypeError`, `RangeError`, `ReferenceError`, `SyntaxError`, `URIError`, `EvalError`, `AggregateError`, an error renamed `Object`, a nameless object, a bare string | 500 with exactly the documented body; the body is asserted not to contain the original message or any built-in class name |
+| runtime-reported failures stay diagnosable | `MessageAbortedError` → `{message:"Aborted", code:"MessageAbortedError"}`; explicit `code` wins (`OPENCODE_BOOM`); streamed `response.failed` carries `{message:"Aborted", type:"server_error", code:"MessageAbortedError"}` and no `"code":"Object"`; the non-streaming error-only turn keeps the documented 502 row (`{message:"Aborted", type:"MessageAbortedError"}`) | all pass |
+
+Real-link evidence: with `MANAGE_BACKEND=false` and an unreachable backend the
+lead measured `HTTP 500 {"error":{"message":"Internal server error",
+"type":"server_error","code":"internal_error"}}` (120.8 s, see the parity note
+below), and my own real-runtime smoke reproduces the same body on its
+transport-failure path (`tests/verification/smoke/real-runtime-smoke.mjs`);
+before the fix both lines carried `{"message":"fetch failed","type":"internal_error","code":"TypeError"}`.
+
+Also closed: `FINDING-5` (echo-skip semantics) was ruled **intentional** and is
+now asserted as “skip, and report a mismatch against `replyDigest` at debug
+level”; the tool-contract reminder (`externalToolContext.reminder`) regression is
 independently re-verified below.
-
-### Open
-
-**FINDING-11 (major, parity) — the 500 body leaks the internal error class.**
-`transformUpstreamError` (copied from the monolith) defaults to
-`code = error.code || error.constructor.name` and passes the raw message
-through, so an unexpected runtime failure answers
-`500 {"error":{"message":"fetch failed","type":"internal_error","code":"TypeError"}}`
-where api-reference documents
-`500 {"error":{"message":"Internal server error","type":"server_error","code":"internal_error"}}`.
-
-- Reproduction (offline): `npm run test:one -- tests/verification/contract/errors-and-locking.test.js -t FINDING-11 --runInBand`
-- Real-world trigger: the real-runtime smoke above (runtime unreachable).
-- Same mapper also produces `response.failed` error payloads
-  (`{"message":"Aborted","type":"internal_error","code":"Object"}`).
-- Still wrapped in `test.failing`; fixing the default branch flips it to red
-  until the wrapper is removed.
 
 ### Ruled a documented behaviour (not a defect)
 
@@ -357,7 +374,14 @@ critical section and re-run this suite plus a concurrency soak.
   attempt per hour;
 - the LRU hard cap (default 1000) can evict a *locked* conversation, closing an
   upstream session under an in-flight turn; the store documents “hard cap wins”
-  and ARCHITECTURE is silent.
+  and ARCHITECTURE is silent;
+- with `MANAGE_BACKEND=false` and an unreachable backend, the first request waits
+  out the startup probe (`STARTUP_WAIT_ITERATIONS(60) × 2000ms` ≈ **120 s**) before
+  answering 500. Same source in the pre-rewrite monolith, so it is a parity
+  behaviour, not a regression; the lead reproduced it on the real link
+  (`HTTP 500  120.8s`). It is worth a follow-up note for operators: the wait is
+  not configurable and a dead backend turns the first turn into a two-minute
+  stall.
 
 ## 10. `externalToolContext.reminder` regression — independent conclusion
 
@@ -400,6 +424,6 @@ node tests/verification/smoke/real-upstream-smoke.mjs
 # real runtime / environment check (needs a runtime; documents its absence)
 node tests/verification/smoke/real-runtime-smoke.mjs
 
-# one case, e.g. the open finding
-npm run test:one -- tests/verification/contract/errors-and-locking.test.js -t FINDING-11 --runInBand
+# one case, e.g. the error-sanitization re-verification of FINDING-11
+npm run test:one -- tests/verification/contract/error-sanitization.test.js --runInBand
 ```

@@ -69,7 +69,9 @@ describe('FINDING-11 — our own failures answer the documented 500 body', () =>
         // Nothing of the original failure may survive in the body.
         const raw = JSON.stringify(res.body);
         expect(raw).not.toMatch(/boom|fetch failed|out of range|plain string/);
-        expect(raw).not.toMatch(/TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError|AggregateError/);
+        expect(raw).not.toMatch(
+            /TypeError|RangeError|ReferenceError|SyntaxError|URIError|EvalError|AggregateError/
+        );
     });
 });
 
