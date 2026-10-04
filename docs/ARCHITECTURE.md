@@ -241,6 +241,35 @@ change it.
 7. Graceful shutdown: on SIGINT/SIGTERM close the HTTP server, kill a managed
    backend, remove temp dirs.
 
+## 4a. Runtime integration constraints
+
+`plugin/opencode-gateway-tool-lock.js` is loaded by the OpenCode backend, not by
+this process, so it obeys the runtime's loader, not ours. Two rules are load
+bearing and are easy to break while editing:
+
+1. **The plugin file exports exactly one symbol: its default factory.** The
+   loader registers *every function export* of a plugin file as a plugin of its
+   own; the bogus entries it creates make `Plugin.trigger` throw
+   `TypeError: null is not an object` on every turn. Pure helpers therefore live
+   in `plugin/tool-policy.js`, which must never be listed in the runtime's
+   `plugin` configuration.
+2. **The factory returns every hook the runtime calls** (`config`, `event`,
+   `dispose`, `chat.message`, `chat.params`, `tool.execute.after`, plus the
+   `tool.execute.before` that carries the policy). `Plugin.trigger` resolves a
+   hook by name and calls it without checking that the plugin defined one, so a
+   plugin with fewer hooks fails every prompt before the model is reached.
+
+Both were verified against a real `opencode serve` 1.18.34: with the rules
+respected a prompt answers normally and the policy still denies a `[tools:none]`
+session while allowing a `[tools:*]` one; violating either rule answers 500 on
+every turn. `tests/unit/tool-lock.test.js` pins the export surface and the hook
+set, and `docs/{zh,en}/troubleshooting.md` documents the symptom.
+
+The same reasoning applies to the tool list: the runtime rejects a request whose
+tool list differs from the official client's, which is why the proxy leaves the
+list alone and enforces the policy inside the plugin instead of stripping tools
+per request.
+
 ## 5. Migration order
 
 The rewrite lands module by module, each step keeping `npm test` green:
