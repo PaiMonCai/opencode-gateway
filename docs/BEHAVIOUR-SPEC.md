@@ -19,7 +19,10 @@ in the same way, so gateways see no surprise change.
 | GET | `/v1/models` | Bearer when `API_KEY` set | runtime catalog, else upstream catalogs, else one fallback model |
 | POST | `/v1/chat/completions` | Bearer when `API_KEY` set | streaming and non-streaming |
 | POST | `/v1/responses` | Bearer when `API_KEY` set | streaming and non-streaming, `previous_response_id` chaining |
-| any | other | — | `404 {"error":{"message":"Route not found: ...","type":"not_found_error"}}` |
+| any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
+
+Malformed JSON bodies answer `400 {"error":{"message":"Invalid JSON in request body",...}}`
+and an oversized body `400 {"error":{"message":"Request body too large",...}}`.
 
 Auth failure: `401 {"error":{"message":"Invalid API key","type":"invalid_request_error","code":"invalid_api_key"}}`
 (the documented OpenAI-shaped body; the pre-rewrite code answered a bare
@@ -257,3 +260,13 @@ backend, remove temporary jail directories.
 Every environment variable name, default, and `config.json` key documented in
 `docs/{zh,en}/configuration.md` is part of the contract and must not change.
 Precedence: environment > `config.json` > built-in default.
+
+Deliberate hardenings of the previous behaviour (approved with the rewrite):
+
+- a malformed `config.json` fails fast instead of warning and continuing;
+- a non-numeric `PORT` (including `0`) is rejected instead of silently falling
+  back to 10000;
+- an empty environment variable means "unset" everywhere (the previous code
+  treated `''` as `false` for most booleans);
+- the startup banner reports the effective event-timeout defaults
+  (`8000ms` / `30000ms`) rather than "default".
