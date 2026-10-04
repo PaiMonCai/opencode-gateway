@@ -16,6 +16,7 @@ Repositioned as the compatibility layer between an OpenAI-format gateway
 ### Changed
 
 - **Renamed**: package, plugin file (`opencode-gateway-tool-lock.js`), session-title prefix, and the `OPENCODE_GATEWAY_*` environment prefix, with no compatibility aliases for the old names.
+- **401 body aligned with the docs**: an unauthorised request now answers `{"error":{"message":"Invalid API key","type":"invalid_request_error","code":"invalid_api_key"}}` instead of a bare `{"message":"Unauthorized"}`. `/health/details` and `/metrics` keep their plain-text 401/404 probe responses.
 - **Positioning**: the local OpenCode runtime is no longer on the critical path — it serves the free tier, while Go and paid Zen traffic goes straight to OpenCode's own endpoints.
 - **Licensing**: the project is licensed under MIT with its own copyright line.
 

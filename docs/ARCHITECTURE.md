@@ -9,6 +9,15 @@ This document is the **contract for the rewrite**: module boundaries, interfaces
 invariants, and the rules that must not change. Anything not written here is an
 implementation detail.
 
+Companion documents:
+
+- [`docs/BEHAVIOUR-SPEC.md`](./BEHAVIOUR-SPEC.md) — the wire-level behaviour the
+  rewrite must reproduce (request fields, response and SSE shapes, tool contract,
+  error table, ops surfaces). Implement from it, never by transplanting the
+  previous implementation.
+- [`docs/zh/api-reference.md`](./zh/api-reference.md) / [`docs/en/api-reference.md`](./en/api-reference.md)
+  — the user-facing contract. It wins over the behaviour spec if they disagree.
+
 ## 1. Layering
 
 ```
