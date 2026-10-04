@@ -251,6 +251,73 @@ describe('§3 streaming events', () => {
     });
 });
 
+describe('§3 failures and effort mapping', () => {
+    test('a failure after the headers emits response.failed followed by [DONE]', async () => {
+        const { http, fake } = await assembly({
+            runtime: {
+                reply: '',
+                eventStream: () =>
+                    async function* stream() {
+                        const sessionId = fake.calls.created.at(-1)?.id;
+                        yield {
+                            type: 'message.updated',
+                            properties: {
+                                info: {
+                                    id: 'm-err',
+                                    sessionID: sessionId,
+                                    finish: 'stop',
+                                    error: { name: 'MessageAbortedError', message: 'Aborted' }
+                                }
+                            }
+                        };
+                    }
+            }
+        });
+        fake.client.session.messages = async () => [
+            {
+                info: {
+                    id: 'm-err',
+                    role: 'assistant',
+                    finish: 'stop',
+                    error: { name: 'MessageAbortedError', message: 'Aborted' }
+                },
+                parts: []
+            }
+        ];
+
+        const res = await http
+            .post('/v1/responses')
+            .send({ model: 'opencode/big-pickle', input: 'hi', stream: true });
+
+        expect(res.status).toBe(200);
+        const types = eventTypes(res.text);
+        expect(types).toContain('response.failed');
+        expect(types.at(-1)).toBe('[DONE]');
+        // Never a second JSON body after the stream opened.
+        expect(res.text.startsWith('data: ')).toBe(true);
+        const failed = eventPayloads(res.text).find((payload) => payload.type === 'response.failed');
+        expect(failed.response.error.message).toBe('Aborted');
+    });
+
+    test('reasoning_effort maps to the documented effort values', async () => {
+        const cases = [
+            ['minimal', 'none'],
+            ['low', 'low'],
+            ['medium', 'medium'],
+            ['high', 'high'],
+            ['xhigh', 'high']
+        ];
+        for (const [input, expected] of cases) {
+            const { http } = await assembly({ runtime: { reply: 'A', reasoning: 'R' } });
+            const res = await http
+                .post('/v1/responses')
+                .send({ model: 'opencode/big-pickle', input: 'q', reasoning_effort: input });
+            expect(res.status).toBe(200);
+            expect(res.body.reasoning.effort).toBe(expected);
+        }
+    });
+});
+
 describe('§3 previous_response_id chaining', () => {
     test('a known id continues the same upstream session', async () => {
         const { http, fake } = await assembly({ runtime: { reply: 'first' } });

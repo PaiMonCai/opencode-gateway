@@ -171,42 +171,38 @@ describe('§6 conversation lock', () => {
         expect(firstRes.status).toBe(504);
     }, 20_000);
 
-    test.failing(
-        '[FINDING-10] chat turns on different conversations are not globally serialized',
-        async () => {
-            // Observed: `handleChat` runs every turn under a module-level mutex
-            // (`lock`, src/routes/engine.js:583/1828), so a slow chat turn blocks
-            // all other chat traffic — including other conversations — and the
-            // documented `503 conversation_busy` is unreachable on this surface.
-            // The pre-rewrite monolith had the same mutex (parity), but
-            // api-reference §503 describes per-conversation waiting, and
-            // ARCHITECTURE §2 invariant 7 says only turns *of one conversation*
-            // are serialized.
-            const { http } = await shortLock(80, {
-                env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '700' },
-                runtime: HANGING_RUNTIME
-            });
-            const started = Date.now();
-            const slow = http
-                .post('/v1/chat/completions')
-                .set('x-opencode-session', 'conv-slow')
-                .send({ model: 'opencode/big-pickle', messages: [USER] })
-                .then((response) => response);
-            await new Promise((resolve) => setTimeout(resolve, 60));
+    test('[PARITY-DOCUMENTED] chat turns are serialized process-wide (documented throughput limit)', async () => {
+        // Verified as an existing, now-documented behaviour rather than a defect:
+        // `handleChat` runs every turn under a module-level mutex (`lock`,
+        // src/routes/engine.js:583/1828), so a slow chat turn delays chat traffic
+        // for other conversations too, and `503 conversation_busy` is observable
+        // on the responses surface instead (api-reference 503 section and
+        // BEHAVIOUR-SPEC §1 document exactly this; verified by the lead's
+        // ruling). Reported as a known throughput limitation with the change
+        // preconditions, not as a rewrite regression.
+        const { http } = await shortLock(80, {
+            env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '700' },
+            runtime: HANGING_RUNTIME
+        });
+        const slow = http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'conv-slow')
+            .send({ model: 'opencode/big-pickle', messages: [USER] })
+            .then((response) => response);
+        await new Promise((resolve) => setTimeout(resolve, 60));
 
-            const other = await http
-                .post('/v1/chat/completions')
-                .set('x-opencode-session', 'conv-other')
-                .send({ model: 'opencode/big-pickle', messages: [USER] });
-            const elapsed = Date.now() - started;
+        const otherStartedAt = Date.now();
+        const other = await http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'conv-other')
+            .send({ model: 'opencode/big-pickle', messages: [USER] });
+        const otherElapsed = Date.now() - otherStartedAt;
 
-            expect(other.status).toBe(504); // it did run and hit its own timeout
-            // Expected: it is served while the other conversation is still running.
-            expect(elapsed).toBeLessThan(400);
-            await slow;
-        },
-        20_000
-    );
+        expect(other.status).toBe(504); // it ran and hit its own turn timeout
+        // Serialized: the second request could only start once the first ended.
+        expect(otherElapsed).toBeGreaterThan(400);
+        await slow;
+    }, 20_000);
 
     test('a client disconnect releases the conversation lock', async () => {
         const harness = await shortLock(400, {
@@ -330,41 +326,35 @@ describe('§6 baseline decision at the assembly level', () => {
         expect(second.body.choices[0].message.content).toBe('Direct answer');
     });
 
-    test.failing(
-        '[FINDING-9] a pinned runtime turn answers 503 session_state_unavailable on a bad snapshot',
-        async () => {
-            // BEHAVIOUR-SPEC §6 and api-reference document 503 /
-            // `session_state_unavailable`. Observed: the responses handler throws
-            // `{statusCode: 503, code: 'session_state_unavailable'}` into
-            // `transformUpstreamError`, whose `statusCode >= 500` branch rewrites it
-            // to 502 `server_error`, so a client cannot detect the retryable case.
-            // The pre-rewrite monolith had the same mapping (parity), but the
-            // published contract is authoritative. The chat path answers 503
-            // correctly — see the test above.
-            const { http, fake } = await assembly();
-            const first = await http.post('/v1/responses').send({
-                model: 'opencode/big-pickle',
-                input: 'first'
-            });
-            expect(first.status).toBe(200);
+    test('[FINDING-9 fixed] a pinned runtime turn answers 503 session_state_unavailable on a bad snapshot', async () => {
+        // Defect fixed during verification (was: the responses handler threw into
+        // `transformUpstreamError`, whose `statusCode >= 500` branch rewrote the
+        // documented 503 into 502 `server_error`). api-reference documents this
+        // body as `{message, type: 'session_state_unavailable'}` — no `code`.
+        const { http, fake } = await assembly();
+        const first = await http.post('/v1/responses').send({
+            model: 'opencode/big-pickle',
+            input: 'first'
+        });
+        expect(first.status).toBe(200);
 
-            fake.client.session.messages = async () => {
-                throw new Error('snapshot unavailable');
-            };
-            const second = await http.post('/v1/responses').send({
-                model: 'opencode/big-pickle',
-                input: 'second',
-                previous_response_id: first.body.id
-            });
+        fake.client.session.messages = async () => {
+            throw new Error('snapshot unavailable');
+        };
+        const second = await http.post('/v1/responses').send({
+            model: 'opencode/big-pickle',
+            input: 'second',
+            previous_response_id: first.body.id
+        });
 
-            expect(second.status).toBe(503);
-            expect(second.body.error).toMatchObject({
-                type: 'session_state_unavailable',
-                code: 'session_state_unavailable',
-                message: 'Could not read the session state for this conversation; retry the request'
-            });
-        }
-    );
+        expect(second.status).toBe(503);
+        expect(second.body).toEqual({
+            error: {
+                message: 'Could not read the session state for this conversation; retry the request',
+                type: 'session_state_unavailable'
+            }
+        });
+    });
 
     test('the chat path answers the documented 503 for the same failure', async () => {
         const { http, fake } = await assembly();

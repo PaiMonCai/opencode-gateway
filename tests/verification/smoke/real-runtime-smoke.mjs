@@ -15,7 +15,6 @@
  * Usage: `node tests/verification/smoke/real-runtime-smoke.mjs`
  */
 
-/* global AbortSignal, console, fetch, process, setTimeout */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

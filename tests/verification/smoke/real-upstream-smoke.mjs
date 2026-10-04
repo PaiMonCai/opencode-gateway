@@ -10,7 +10,6 @@
  * Exits non-zero on failure and prints the evidence lines the report quotes.
  */
 
-/* global console, fetch */
 import assert from 'node:assert/strict';
 
 import { createAssembly } from '../contract/harness.js';
