@@ -119,6 +119,28 @@ npm run test:stream        # streaming smoke test against a live gateway (alias:
 
 `test:stream` exit codes: `0` passed, `1` a check failed, `2` the gateway is unreachable. Useful overrides: `BASE_URL`, `API_KEY`, `MODEL`, `CHECK_TOOLS=1` (also verify streamed tool calls).
 
+### Egress through a proxy
+
+When the only way out is a SOCKS proxy (a corporate gateway, for instance):
+
+```bash
+docker run -d --name opencode-gateway \
+  -p 10000:10000 \
+  -e API_KEY=your-key \
+  -e OPENCODE_SERVER_PASSWORD=your-password \
+  -e OPENCODE_PROXY_UPSTREAM_PROXY=socks5h://user:pass@10.0.0.9:1080 \
+  -e OPENCODE_ZEN_API_KEY=your-opencode-key \
+  -v opencode-data:/home/node/.local/share/opencode \
+  -v opencode-config:/home/node/.config/opencode \
+  ghcr.io/paimoncai/opencode-gateway:latest
+```
+
+The variable covers the **direct upstream** and the **managed runtime** (the free
+tier's egress needs it too). Add
+`-e OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false` to keep it to the direct
+path, or use the standard `-e ALL_PROXY=...`, which the child inherits anyway.
+Loopback traffic (runtime, health checks) is never proxied.
+
 ## ❓ FAQ
 
 - **Container will not start**: read `docker compose logs` and check that the host port is free.

@@ -17,6 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { describeConfig } from './config/index.js';
+import { proxyEnvForRuntime } from './upstreams/proxy-fetch.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -379,7 +380,9 @@ async function ensureManagedBackend(config, logger = {}) {
         ZEN_API_KEY,
         OPENCODE_SERVER_PASSWORD,
         MANAGE_BACKEND,
-        PROMPT_MODE
+        PROMPT_MODE,
+        UPSTREAM_PROXY,
+        UPSTREAM_PROXY_FOR_RUNTIME
     } = config;
     const stateKey = OPENCODE_SERVER_URL;
 
@@ -450,7 +453,13 @@ async function ensureManagedBackend(config, logger = {}) {
         const backendEnv = {
             OPENCODE_CONFIG_CONTENT: buildBackendConfigContent(),
             ...(OPENCODE_SERVER_PASSWORD ? { OPENCODE_SERVER_PASSWORD } : {}),
-            ...(ZEN_API_KEY ? { OPENCODE_API_KEY: ZEN_API_KEY } : {})
+            ...(ZEN_API_KEY ? { OPENCODE_API_KEY: ZEN_API_KEY } : {}),
+            // The runtime makes its own outbound calls (the free tier cannot be
+            // reached any other way), so it needs the same egress; NO_PROXY keeps
+            // its loopback traffic local.
+            ...(UPSTREAM_PROXY && UPSTREAM_PROXY_FOR_RUNTIME
+                ? proxyEnvForRuntime(UPSTREAM_PROXY, process.env.NO_PROXY || process.env.no_proxy || '')
+                : {})
         };
 
         const isWindows = process.platform === 'win32';

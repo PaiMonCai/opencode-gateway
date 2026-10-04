@@ -52,6 +52,8 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `DIRECT_ZEN_BASE_URL` | `https://opencode.ai/zen/v1` | Paid Zen endpoint |
 | `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `DIRECT_FREE_VIA_RUNTIME` | `true` | Keep free-tier models on the local runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `DIRECT_FALLBACK_TO_RUNTIME` | `true` | Fall back to the runtime when the direct upstream refuses (401/403) or is unreachable |
+| `OPENCODE_PROXY_UPSTREAM_PROXY` | `UPSTREAM_PROXY` | (empty) | Proxy for upstream egress: `socks5h://`, `socks5://`, `socks4a://`, `socks4://`, `http://`, `https://` (credentials allowed as `user:pass@`); the standard `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` are read as fallbacks |
+| `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME` | `UPSTREAM_PROXY_FOR_RUNTIME` | `true` | Hand the same proxy to the managed runtime, so the free tier's own egress uses it too |
 
 ### Conversation Session Reuse
 
@@ -105,6 +107,40 @@ In direct mode:
 - a `401/403` (bad key / missing entitlement) or a transport failure falls back to the local runtime, unless `OPENCODE_PROXY_DIRECT_FALLBACK=false`, which surfaces the upstream error instead.
 
 > Without `OPENCODE_ZEN_API_KEY` the direct path stays off and every request uses the runtime.
+
+### Outbound proxy (SOCKS / HTTP)
+
+Direct upstream calls can go through a proxy, which is what a deployment with a
+SOCKS-only egress needs:
+
+```bash
+# SOCKS5, with the proxy resolving the target host (recommended)
+OPENCODE_PROXY_UPSTREAM_PROXY=socks5h://user:pass@10.0.0.9:1080
+
+# The standard variables work too, at a lower precedence:
+# OPENCODE_PROXY_UPSTREAM_PROXY > ALL_PROXY > HTTPS_PROXY > HTTP_PROXY
+ALL_PROXY=socks5h://10.0.0.9:1080
+```
+
+Behaviour:
+
+- it covers **upstream egress only** (direct chat/responses to `opencode.ai` and
+  the model catalogs); the managed runtime, its health check and the SDK are
+  loopback traffic and are **never proxied** — `localhost`, `127.0.0.0/8` and
+  `::1` bypass automatically;
+- `NO_PROXY` (comma separated; domain suffixes like `.example.com`, `host:port`
+  and `*` all work) adds to that bypass list;
+- the free tier is served by the local runtime, so its **own egress has to use the
+  proxy as well**: passing it on is on by default, and the child process receives
+  it as `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` (plus `NODE_USE_ENV_PROXY=1` and a
+  `NO_PROXY` containing the loopback addresses). Set
+  `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false` to keep the proxy to the
+  direct path;
+- configuring only the standard `ALL_PROXY`/`HTTPS_PROXY` does **not** pass
+  anything on (the child inherits the container environment anyway, so it behaves
+  the same);
+- the startup banner prints `scheme://***@host:port` and **never leaks
+  credentials**; an unusable scheme fails fast at startup.
 
 What the direct path covers:
 

@@ -1,3 +1,4 @@
+import { PROXY_SCHEME_LIST, describeProxyUrl, parseProxyUrl } from './proxy-url.js';
 /**
  * The configuration schema: every environment variable / `config.json` key the
  * gateway understands, its default and how it is validated.
@@ -67,7 +68,7 @@ export class ConfigError extends Error {
 }
 
 /**
- * @typedef {'boolean' | 'integer' | 'string' | 'url' | 'enum' | 'list'} ConfigFieldType
+ * @typedef {'boolean' | 'integer' | 'string' | 'url' | 'proxy-url' | 'enum' | 'list'} ConfigFieldType
  */
 
 /**
@@ -184,6 +185,16 @@ export function coerceField(field, value, source) {
                 return fail('an http(s) URL');
             }
             return value.trim().replace(/\/+$/, '');
+        }
+        case 'proxy-url': {
+            if (value === '' || value === null || value === undefined) return '';
+            let parsed;
+            try {
+                parsed = parseProxyUrl(value);
+            } catch (error) {
+                return fail(error instanceof Error ? error.message : `a proxy URL (${PROXY_SCHEME_LIST})`);
+            }
+            return parsed ? parsed.url : '';
         }
         case 'enum': {
             if (typeof value !== 'string') return fail(`one of ${(field.values ?? []).join(', ')}`);
@@ -601,6 +612,36 @@ const FIELDS = [
         description: 'Fall back to the runtime when the direct upstream refuses'
     },
     {
+        key: 'UPSTREAM_PROXY',
+        env: [
+            'OPENCODE_PROXY_UPSTREAM_PROXY',
+            'ALL_PROXY',
+            'all_proxy',
+            'HTTPS_PROXY',
+            'https_proxy',
+            'HTTP_PROXY',
+            'http_proxy'
+        ],
+        fileKey: 'UPSTREAM_PROXY',
+        type: 'proxy-url',
+        default: '',
+        description:
+            'SOCKS or HTTP(S) proxy for upstream calls (socks5h://, socks5://, socks4a://, socks4://, http://, https://)',
+        banner: (value) => `  - Upstream Proxy: ${describeProxyUrl(value)}`
+    },
+    {
+        key: 'UPSTREAM_PROXY_FOR_RUNTIME',
+        env: ['OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME'],
+        fileKey: 'UPSTREAM_PROXY_FOR_RUNTIME',
+        type: 'boolean',
+        default: true,
+        description: 'Also export the upstream proxy to the managed runtime so its own egress uses it',
+        banner: (value, config) =>
+            `  - Proxy for managed runtime: ${
+                config.UPSTREAM_PROXY ? (value ? 'Yes' : 'No') : 'n/a (no proxy configured)'
+            }`
+    },
+    {
         key: 'DEBUG',
         env: ['OPENCODE_PROXY_DEBUG'],
         fileKey: 'DEBUG',
@@ -660,6 +701,10 @@ export const CONFIG_FIELDS = Object.freeze(FIELDS);
  * @property {string} DIRECT_ZEN_BASE_URL
  * @property {boolean} DIRECT_FREE_VIA_RUNTIME
  * @property {boolean} DIRECT_FALLBACK_TO_RUNTIME
+ * @property {string} UPSTREAM_PROXY
+ * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
+ * @property {string} UPSTREAM_PROXY
+ * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
  * @property {boolean} DEBUG
  */
 

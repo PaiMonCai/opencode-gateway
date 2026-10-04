@@ -19,6 +19,13 @@ in the same way, so gateways see no surprise change.
 | GET | `/v1/models` | Bearer when `API_KEY` set | runtime catalog, else upstream catalogs, else one fallback model |
 | POST | `/v1/chat/completions` | Bearer when `API_KEY` set | streaming and non-streaming |
 | POST | `/v1/responses` | Bearer when `API_KEY` set | streaming and non-streaming, `previous_response_id` chaining |
+**Outbound proxy**: when `OPENCODE_PROXY_UPSTREAM_PROXY` (or the standard
+`ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` fallbacks) is set, direct upstream calls
+and the model-catalog fetches dial the proxy; loopback targets always bypass it,
+so the runtime, its health check and the SDK are unaffected. Bodies, statuses and
+headers of proxied responses are relayed exactly as received (no transparent
+decompression, repeated headers preserved).
+
 **Chat serialization (parity)**: `/v1/chat/completions` runs each turn inside a
 process-wide mutex, so different conversations queue behind each other and
 `503 conversation_busy` is only observable on `/v1/responses`. Kept from the

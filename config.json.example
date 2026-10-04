@@ -42,6 +42,8 @@
     "DIRECT_ZEN_BASE_URL": "https://opencode.ai/zen/v1",
     "DIRECT_FREE_VIA_RUNTIME": true,
     "DIRECT_FALLBACK_TO_RUNTIME": true,
+    "UPSTREAM_PROXY": "",
+    "UPSTREAM_PROXY_FOR_RUNTIME": true,
     "HEALTH_DETAILS_ENABLED": true,
     "HEALTH_DETAILS_REQUIRE_AUTH": true,
     "METRICS_ENABLED": false,

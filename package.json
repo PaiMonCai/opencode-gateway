@@ -40,7 +40,9 @@
         "@opencode-ai/sdk": "^1.18.34",
         "body-parser": "^1.20.3",
         "cors": "^2.8.5",
-        "express": "^4.21.2"
+        "express": "^4.21.2",
+        "https-proxy-agent": "^7.0.6",
+        "socks-proxy-agent": "^8.0.5"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

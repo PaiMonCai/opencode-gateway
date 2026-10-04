@@ -119,6 +119,24 @@ npm run test:stream        # 对真实网关跑流式冒烟，需要真机模型
 
 `test:stream` 的退出码：`0` 通过、`1` 有检查失败、`2` 网关不可达。常用环境变量：`BASE_URL`、`API_KEY`、`MODEL`、`CHECK_TOOLS=1`（额外验证流式工具调用）。
 
+### 走代理出网
+
+只能通过 SOCKS 出网时（例如公司代理）：
+
+```bash
+docker run -d --name opencode-gateway \
+  -p 10000:10000 \
+  -e API_KEY=your-key \
+  -e OPENCODE_SERVER_PASSWORD=your-password \
+  -e OPENCODE_PROXY_UPSTREAM_PROXY=socks5h://user:pass@10.0.0.9:1080 \
+  -e OPENCODE_ZEN_API_KEY=your-opencode-key \
+  -v opencode-data:/home/node/.local/share/opencode \
+  -v opencode-config:/home/node/.config/opencode \
+  ghcr.io/paimoncai/opencode-gateway:latest
+```
+
+该变量同时作用于**直连上游**与**托管的 runtime**（免费档的出站也走代理）。只想让直连走代理时加 `-e OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false`；也可以用标准 `-e ALL_PROXY=...`（此时子进程本来就继承，效果相同）。环回流量（runtime/健康检查）永不走代理。
+
 ## ❓ 常见问题
 
 - **容器起不来**：`docker compose logs` 看日志；确认宿主端口没被占用。

@@ -119,6 +119,7 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_SERVER_PORT` | `10001` | 后端端口（未显式配置 `OPENCODE_SERVER_URL` 时生效） |
 | `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | 后端地址（纯直连部署可指向不可达地址） |
 | `OPENCODE_ZEN_API_KEY` | (空) | OpenCode 账号/订阅 key：配好后 Go 与付费 Zen 走直连，同时传给托管的 runtime |
+| `OPENCODE_PROXY_UPSTREAM_PROXY` | (空) | 上游出站代理（`socks5h://`/`socks5://`/`socks4a://`/`socks4://`/`http(s)://`，支持 `user:pass@`）；也识别标准 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`，环回流量不走代理 |
 | `OPENCODE_DISABLE_TOOLS` | `true` | 禁用 OpenCode 内置工具 |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | (空) | 请求未带 `tools` 时放行的内置工具，逗号分隔 |
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` 或 `plugin-inject` |

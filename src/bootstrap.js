@@ -15,6 +15,7 @@ import { createConversationRegistry } from './conversation/index.js';
 import { createApp } from './app.js';
 import { createResponseChainIndex } from './routes/engine.js';
 import { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } from './upstreams/index.js';
+import { createUpstreamFetch } from './upstreams/proxy-fetch.js';
 
 /**
  * @typedef {object} BuildRuntimeOptions
@@ -39,6 +40,29 @@ import { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } fro
  */
 
 /**
+ * Pick the fetch the direct upstream should use.
+ *
+ * An explicitly injected fetch always wins (tests rely on that). Otherwise a
+ * configured `UPSTREAM_PROXY` builds a fetch that dials the proxy, and without a
+ * proxy the built-in fetch is returned unchanged.
+ *
+ * @param {object} options Selection options.
+ * @param {import('./config/schema.js').Config} options.config Resolved configuration.
+ * @param {typeof fetch|null} [options.fetch] Fetch injected by the caller.
+ * @param {import('./logging/index.js').Logger|null} [options.logger] Logger dependency.
+ * @returns {typeof fetch|undefined} Fetch to inject, or undefined to let the client default.
+ */
+export function resolveUpstreamFetch({ config, fetch = null, logger = null }) {
+    if (fetch) return fetch;
+    if (!config.UPSTREAM_PROXY) return undefined;
+    return createUpstreamFetch({
+        proxyUrl: config.UPSTREAM_PROXY,
+        noProxy: process.env.NO_PROXY || process.env.no_proxy || '',
+        logger
+    });
+}
+
+/**
  * Assemble the runtime graph.
  *
  * @param {BuildRuntimeOptions} options Assembly options.
@@ -51,16 +75,20 @@ export function buildRuntime({
     fetch = null,
     ensureBackend = async () => {}
 }) {
+    const upstreamFetch = resolveUpstreamFetch({ config, fetch, logger });
     const runtime = createRuntimeUpstream({
         config,
         logger,
         ...(sdk ? { sdk } : {}),
+        // The runtime client only uses this fetch for loopback health checks, and
+        // the proxied fetch always bypasses loopback; inject it only when the
+        // caller did, so the local path keeps using the built-in fetch.
         ...(fetch ? { fetch } : {})
     });
     const direct = createDirectUpstream({
         config,
         logger,
-        ...(fetch ? { fetch } : {})
+        ...(upstreamFetch ? { fetch: upstreamFetch } : {})
     });
     // The chain index is shared: the registry needs it to keep a session a live
     // `previous_response_id` chain still references from being closed.

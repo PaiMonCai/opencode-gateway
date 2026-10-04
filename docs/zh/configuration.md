@@ -52,6 +52,8 @@
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `DIRECT_ZEN_BASE_URL` | `https://opencode.ai/zen/v1` | 付费 Zen 端点 |
 | `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `DIRECT_FREE_VIA_RUNTIME` | `true` | 免费档模型仍交由本地 runtime 代发 |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `DIRECT_FALLBACK_TO_RUNTIME` | `true` | 直连被拒绝（401/403）或网络失败时回退 runtime |
+| `OPENCODE_PROXY_UPSTREAM_PROXY` | `UPSTREAM_PROXY` | (空) | 上游出站代理：`socks5h://`、`socks5://`、`socks4a://`、`socks4://`、`http://`、`https://`（支持 `user:pass@`）；也识别标准 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` |
+| `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME` | `UPSTREAM_PROXY_FOR_RUNTIME` | `true` | 把同一个代理也交给托管的 runtime（免费档的出站同样需要代理时保持开启） |
 
 ### 会话复用
 
@@ -104,6 +106,26 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 - 直连返回 `401/403`（key 无效 / 无该额度）或网络失败时，自动回退到本地 runtime（可用 `OPENCODE_PROXY_DIRECT_FALLBACK=false` 关掉，让错误原样暴露）。
 
 > 没配 `OPENCODE_ZEN_API_KEY` 时直连不会启用，全部请求仍走 runtime（免费档照常可用）。
+
+### 出站代理（SOCKS / HTTP）
+
+直连上游的出站请求可以走代理，部署在只能用 SOCKS 出网的环境时用得上：
+
+```bash
+# SOCKS5（由代理解析目标主机名，推荐）
+OPENCODE_PROXY_UPSTREAM_PROXY=socks5h://user:pass@10.0.0.9:1080
+
+# 也可以用标准变量，优先级更低：OPENCODE_PROXY_UPSTREAM_PROXY > ALL_PROXY > HTTPS_PROXY > HTTP_PROXY
+ALL_PROXY=socks5h://10.0.0.9:1080
+```
+
+行为要点：
+
+- **只影响上游出站**（直连 `opencode.ai` 的 chat/responses 与模型目录）；本地 runtime、健康检查、SDK 这些环回流量**永远直连**——`localhost`、`127.0.0.0/8`、`::1` 自动绕过，避免把本地调用发到外部代理；
+- `NO_PROXY`（逗号分隔，支持域名后缀如 `.example.com`、`host:port`、`*`）与上面这套绕行规则叠加生效；
+- 免费档由本地 runtime 代发，**runtime 自己的出站也要走代理**才有用：默认开启透传，会把该代理写成子进程的 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY`（并附带 `NODE_USE_ENV_PROXY=1` 与含环回地址的 `NO_PROXY`）。只想让代理作用于直连上游时设 `OPENCODE_PROXY_UPSTREAM_PROXY_FOR_RUNTIME=false`；
+- 只用标准 `ALL_PROXY`/`HTTPS_PROXY` 时**不会**自动透传给 runtime（子进程本来就继承容器环境，效果相同）；
+- 启动横幅只打印 `scheme://***@host:port`，**不会泄漏凭据**；非法 scheme 在启动时直接报错（fail fast）。
 
 直连覆盖的端点：
 
