@@ -26,11 +26,11 @@ so the runtime, its health check and the SDK are unaffected. Bodies, statuses an
 headers of proxied responses are relayed exactly as received (no transparent
 decompression, repeated headers preserved).
 
-**Chat serialization (parity)**: `/v1/chat/completions` runs each turn inside a
-process-wide mutex, so different conversations queue behind each other and
-`503 conversation_busy` is only observable on `/v1/responses`. Kept from the
-pre-rewrite implementation; the queued wait is bounded by the request timeout
-plus 20 seconds.
+**Conversation serialization**: `/v1/chat/completions` and
+`/v1/responses` serialize turns only within the same conversation. Different
+conversation keys may run concurrently; a waiter that cannot acquire its
+conversation lock within the configured wait budget receives
+`503 conversation_busy`.
 
 | any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
 
