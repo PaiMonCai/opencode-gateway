@@ -125,6 +125,9 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` 或 `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `false` | 忽略传入的 system prompt |
 | `OPENCODE_PROXY_STORAGE_CLEANUP` | `off` | 会话存储清理计划：`off` / `hourly` / `daily` |
+| `OPENCODE_PROXY_MAX_CONCURRENT_TURNS` | `20` | 同时执行的全局 turn 上限 |
+| `OPENCODE_PROXY_MAX_PENDING_TURNS` | `100` | 等待全局容量的最大请求数 |
+| `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` | `2000` | 等待全局容量的最长时间；超时返回 `503 gateway_overloaded` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `true` | 客户端带会话标识头时复用同一后端会话 |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `1800000` | 会话空闲多久后关闭（毫秒） |
 | `OPENCODE_PROXY_SESSION_HEADERS` | (见文档) | 识别会话身份的请求头，逗号分隔 |
@@ -152,6 +155,11 @@ OPENCODE_ZEN_API_KEY=your-opencode-key
 # 会话：网关透传自定义头时用显式头；透传不了就开推导模式
 OPENCODE_PROXY_SESSION_REUSE=true
 OPENCODE_PROXY_SESSION_DERIVE=true
+
+# 并发保护
+OPENCODE_PROXY_MAX_CONCURRENT_TURNS=20
+OPENCODE_PROXY_MAX_PENDING_TURNS=100
+OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 
 # 工具与提示词
 OPENCODE_DISABLE_TOOLS=true

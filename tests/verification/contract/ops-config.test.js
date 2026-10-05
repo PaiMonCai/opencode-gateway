@@ -43,11 +43,23 @@ describe('§7 startup banner', () => {
             API_KEY: 'client-secret',
             OPENCODE_ZEN_API_KEY: 'zen-secret',
             OPENCODE_PATH: '/usr/local/bin/opencode',
-            OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '45000'
+            OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '45000',
+            OPENCODE_PROXY_MAX_CONCURRENT_TURNS: '7',
+            OPENCODE_PROXY_MAX_PENDING_TURNS: '9',
+            OPENCODE_PROXY_CONCURRENCY_WAIT_MS: '1500'
         });
         const text = lines.join('\n');
 
-        for (const expected of ['10123', '0.0.0.0', '4096', '/usr/local/bin/opencode', '45000']) {
+        for (const expected of [
+            '10123',
+            '0.0.0.0',
+            '4096',
+            '/usr/local/bin/opencode',
+            '45000',
+            '7',
+            '9',
+            '1500'
+        ]) {
             expect(text).toContain(expected);
         }
         expect(text).toMatch(/password[^:\n]*:\s*Configured/i);
@@ -124,6 +136,43 @@ describe('§8 configuration hardenings', () => {
         });
         expect(config.REQUEST_TIMEOUT_MS).toBe(12345);
         expect(config.API_KEY).toBe('from-file');
+    });
+});
+
+describe('§7 concurrency operational surfaces', () => {
+    test('health details and Prometheus expose turn-capacity state', async () => {
+        const { http } = await assembly({
+            env: {
+                API_KEY: 'ops-key',
+                OPENCODE_PROXY_OPS: 'full',
+                OPENCODE_PROXY_MAX_CONCURRENT_TURNS: '3',
+                OPENCODE_PROXY_MAX_PENDING_TURNS: '4',
+                OPENCODE_PROXY_CONCURRENCY_WAIT_MS: '500'
+            }
+        });
+
+        const health = await http.get('/health/details').set('Authorization', 'Bearer ops-key');
+        expect(health.status).toBe(200);
+        expect(health.body.concurrency).toMatchObject({
+            active: 0,
+            pending: 0,
+            maxConcurrent: 3,
+            maxPending: 4,
+            waitTimeoutMs: 500,
+            rejectedTotal: 0,
+            timedOutTotal: 0,
+            abortedTotal: 0
+        });
+
+        const metrics = await http.get('/metrics').set('Authorization', 'Bearer ops-key');
+        expect(metrics.status).toBe(200);
+        expect(metrics.text).toContain('opencode_gateway_turns_active 0');
+        expect(metrics.text).toContain('opencode_gateway_turns_pending 0');
+        expect(metrics.text).toContain('opencode_gateway_turn_limit 3');
+        expect(metrics.text).toContain('opencode_gateway_turn_pending_limit 4');
+        expect(metrics.text).toContain('opencode_gateway_turn_rejections_total 0');
+        expect(metrics.text).toContain('opencode_gateway_turn_wait_timeouts_total 0');
+        expect(metrics.text).toContain('opencode_gateway_turn_aborts_total 0');
     });
 });
 

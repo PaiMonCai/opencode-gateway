@@ -194,7 +194,7 @@ Great, now answer the original request using the tool result.
 
 ### 503 Service Unavailable
 
-会话相关的两种 503：
+常见的三类 503：
 > **按会话串行**：`/v1/chat/completions` 与 `/v1/responses` 都只对同一 conversation key 串行化；不同会话可以并发执行。同一会话的锁等待超过上限时返回 `503 conversation_busy`。
 
 
@@ -203,6 +203,14 @@ Great, now answer the original request using the tool result.
 ```
 
 同一段对话已有请求在处理，本次等待超过「请求超时 + 60 秒」——避免整段对话被卡死的轮次永久占住。
+
+不同会话之间允许并发，但全局 turn 数受并发保护限制。队列已满或等待全局容量超过 `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` 时返回：
+
+```json
+{ "error": { "message": "Gateway is at capacity; retry shortly", "type": "gateway_overloaded" } }
+```
+
+响应会带 `Retry-After`；默认最多 20 个 turn 同时执行、100 个等待、等待 2 秒。
 
 ```json
 { "error": { "message": "Could not read the session state for this conversation; retry the request", "type": "session_state_unavailable" } }

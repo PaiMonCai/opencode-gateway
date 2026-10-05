@@ -59,7 +59,7 @@ export function createApp({
             ensureBackend
         });
 
-    // CORS → request context → body parsers → auth. The terminal handlers must
+    // CORS → request context → auth → body parsers. The terminal handlers must
     // come last, after the routes.
     const layer = installHttpLayer(app, { config, logger });
     app.use(createRoutes({ engine: turnEngine }));

@@ -12,7 +12,7 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 - **Common**: `OPENCODE_PROXY_OPS`, `OPENCODE_PROXY_STORAGE_CLEANUP`,
   `OPENCODE_DISABLE_TOOLS`, `OPENCODE_INTERNAL_ALLOWED_TOOLS`,
   `OPENCODE_PROXY_SESSION_DERIVE`, `OPENCODE_PROXY_REQUEST_TIMEOUT_MS`,
-  `OPENCODE_PROXY_UPSTREAM_PROXY`, `OPENCODE_PROXY_DEBUG`.
+  `OPENCODE_PROXY_MAX_CONCURRENT_TURNS`, `OPENCODE_PROXY_UPSTREAM_PROXY`, `OPENCODE_PROXY_DEBUG`.
 - **Advanced**: everything else in the tables below (upstream URLs, event
   timeouts, retries, prompt mode, session header names, …). The defaults are
   already tuned for the free tier; you normally never touch them.
@@ -67,6 +67,9 @@ regular tables above.
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `OMIT_SYSTEM_PROMPT` | `false` | Ignore incoming system prompt |
 | `OPENCODE_PROXY_STORAGE_CLEANUP` | `STORAGE_CLEANUP` | `off` | Sweep stored conversations: `off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_REQUEST_TIMEOUT_MS` | `REQUEST_TIMEOUT_MS` | `180000` | Request timeout (ms) |
+| `OPENCODE_PROXY_MAX_CONCURRENT_TURNS` | `MAX_CONCURRENT_TURNS` | `20` | Process-wide maximum executing turns |
+| `OPENCODE_PROXY_MAX_PENDING_TURNS` | `MAX_PENDING_TURNS` | `100` | Maximum turns waiting for global capacity; excess turns fail immediately |
+| `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` | `CONCURRENCY_WAIT_MS` | `2000` | Maximum capacity wait; `0` means fail fast, timeout returns `503 gateway_overloaded` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `SESSION_REUSE_ENABLED` | `true` | Reuse one backend session per client conversation header |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `SESSION_TTL_MS` | `1800000` | Close an idle conversation after this long (ms) |
 | `OPENCODE_PROXY_SESSION_HEADERS` | `SESSION_HEADER_NAMES` | (see below) | Comma-separated identity headers, first non-empty wins |
@@ -110,7 +113,7 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 
 > Clients that send no session header keep the original stateless behaviour. Set `OPENCODE_PROXY_SESSION_REUSE=false` to disable reuse entirely.
 
-**Error codes**: when the session state cannot be read on a reused conversation (the previous turn cannot be told apart from this one) the request fails with `503 session_state_unavailable` instead of returning stale content; while another request is using the same conversation a concurrent one gets `503 conversation_busy` (the wait is bounded by the request timeout plus 60 seconds).
+**Error codes**: when the session state cannot be read on a reused conversation (the previous turn cannot be told apart from this one) the request fails with `503 session_state_unavailable` instead of returning stale content; while another request is using the same conversation a concurrent one gets `503 conversation_busy` (the wait is bounded by the request timeout plus 60 seconds). Different conversations may run in parallel, but only `MAX_CONCURRENT_TURNS` execute process-wide; up to `MAX_PENDING_TURNS` wait FIFO for capacity, and a full queue or a wait beyond `CONCURRENCY_WAIT_MS` returns `503 gateway_overloaded`.
 
 ### Two upstreams: direct and runtime
 
@@ -207,6 +210,9 @@ What the direct path covers:
     "OMIT_SYSTEM_PROMPT": false,
     "STORAGE_CLEANUP": "off",
     "REQUEST_TIMEOUT_MS": 180000,
+    "MAX_CONCURRENT_TURNS": 20,
+    "MAX_PENDING_TURNS": 100,
+    "CONCURRENCY_WAIT_MS": 2000,
     "DEBUG": false,
     "OPENCODE_SERVER_URL": "http://127.0.0.1:10001",
     "OPENCODE_PATH": "opencode"
@@ -258,6 +264,16 @@ When a request has no `tools`, `opencode.internal_allowed_tools` in the request 
 {
   "status": "ok",
   "proxy": true,
+  "concurrency": {
+    "active": 2,
+    "pending": 1,
+    "maxConcurrent": 20,
+    "maxPending": 100,
+    "waitTimeoutMs": 2000,
+    "rejectedTotal": 0,
+    "timedOutTotal": 0,
+    "abortedTotal": 0
+  },
   "internal_tools": {
     "config": {
       "allowed_tools": ["web_fetch"],
@@ -289,6 +305,13 @@ opencode_internal_tool_mode_requests_total{mode="disabled"}
 opencode_internal_tool_discovery_failures_total
 opencode_internal_tool_fallback_disabled_total
 opencode_internal_tool_cache_ids
+opencode_gateway_turns_active
+opencode_gateway_turns_pending
+opencode_gateway_turn_limit
+opencode_gateway_turn_pending_limit
+opencode_gateway_turn_rejections_total
+opencode_gateway_turn_wait_timeouts_total
+opencode_gateway_turn_aborts_total
 ```
 
 ## 🎯 Prompt Mode
@@ -310,6 +333,9 @@ OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
 OPENCODE_PROXY_STORAGE_CLEANUP=daily
+OPENCODE_PROXY_MAX_CONCURRENT_TURNS=20
+OPENCODE_PROXY_MAX_PENDING_TURNS=100
+OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 ```
 
 ### Local Development

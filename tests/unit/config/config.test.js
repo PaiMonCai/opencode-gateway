@@ -40,6 +40,9 @@ describe('config defaults', () => {
         expect(config.CLEANUP_INTERVAL_MS).toBe(43200000);
         expect(config.CLEANUP_MAX_AGE_MS).toBe(86400000);
         expect(config.REQUEST_TIMEOUT_MS).toBe(180000);
+        expect(config.MAX_CONCURRENT_TURNS).toBe(20);
+        expect(config.MAX_PENDING_TURNS).toBe(100);
+        expect(config.CONCURRENCY_WAIT_MS).toBe(2000);
         expect(config.EVENT_IDLE_TIMEOUT_MS).toBe(8000);
         expect(config.EVENT_FIRST_DELTA_TIMEOUT_MS).toBe(30000);
         expect(config.SESSION_REUSE_ENABLED).toBe(true);
@@ -190,6 +193,9 @@ describe('config validation', () => {
         ['OPENCODE_PROXY_PORT', '0'],
         ['OPENCODE_PROXY_REQUEST_TIMEOUT_MS', '-5'],
         ['OPENCODE_PROXY_REQUEST_TIMEOUT_MS', '1.5'],
+        ['OPENCODE_PROXY_MAX_CONCURRENT_TURNS', '0'],
+        ['OPENCODE_PROXY_MAX_PENDING_TURNS', '-1'],
+        ['OPENCODE_PROXY_CONCURRENCY_WAIT_MS', '-1'],
         ['OPENCODE_PROXY_DEBUG', 'maybe'],
         ['OPENCODE_PROXY_PROMPT_MODE', 'fancy'],
         ['OPENCODE_EXTERNAL_TOOLS_MODE', 'native'],

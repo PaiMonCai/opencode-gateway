@@ -236,6 +236,101 @@ describe('§6 conversation lock', () => {
         expect(firstRes.status).toBe(504);
     }, 20_000);
 
+    test('different conversations are bounded by global capacity', async () => {
+        const { http } = await shortLock(80, {
+            env: {
+                OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '1000',
+                OPENCODE_PROXY_MAX_CONCURRENT_TURNS: '1',
+                OPENCODE_PROXY_MAX_PENDING_TURNS: '1',
+                OPENCODE_PROXY_CONCURRENCY_WAIT_MS: '60'
+            },
+            runtime: {
+                reply: async (args) => {
+                    const promptText = (args?.body?.parts || [])
+                        .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+                        .join('');
+                    if (promptText.includes('slow')) {
+                        await new Promise((resolve) => setTimeout(resolve, 250));
+                        return 'slow answer';
+                    }
+                    return 'fast answer';
+                }
+            }
+        });
+
+        const slow = http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'capacity-slow')
+            .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'slow' }] })
+            .then((response) => response);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const overloaded = await http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'capacity-other')
+            .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'fast' }] });
+
+        expect(overloaded.status).toBe(503);
+        expect(overloaded.headers['retry-after']).toBe('1');
+        expect(overloaded.body).toEqual({
+            error: { message: 'Gateway is at capacity; retry shortly', type: 'gateway_overloaded' }
+        });
+
+        const slowResponse = await slow;
+        expect(slowResponse.status).toBe(200);
+        expect(slowResponse.body.choices[0].message.content).toBe('slow answer');
+    }, 20_000);
+
+    test('responses turns are bounded by the same global capacity', async () => {
+        let markStarted;
+        const started = new Promise((resolve) => {
+            markStarted = resolve;
+        });
+        const { http } = await shortLock(80, {
+            env: {
+                OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '1000',
+                OPENCODE_PROXY_MAX_CONCURRENT_TURNS: '1',
+                OPENCODE_PROXY_MAX_PENDING_TURNS: '1',
+                OPENCODE_PROXY_CONCURRENCY_WAIT_MS: '60'
+            },
+            runtime: {
+                reply: async (args) => {
+                    const promptText = (args?.body?.parts || [])
+                        .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+                        .join('');
+                    if (promptText.includes('slow')) {
+                        markStarted();
+                        await new Promise((resolve) => setTimeout(resolve, 250));
+                        return 'slow answer';
+                    }
+                    return 'fast answer';
+                }
+            }
+        });
+
+        const slow = http
+            .post('/v1/responses')
+            .set('x-opencode-session', 'responses-capacity-slow')
+            .send({ model: 'opencode/big-pickle', input: 'slow' })
+            .then((response) => response);
+        await started;
+
+        const overloaded = await http
+            .post('/v1/responses')
+            .set('x-opencode-session', 'responses-capacity-other')
+            .send({ model: 'opencode/big-pickle', input: 'fast' });
+
+        expect(overloaded.status).toBe(503);
+        expect(overloaded.headers['retry-after']).toBe('1');
+        expect(overloaded.body).toEqual({
+            error: { message: 'Gateway is at capacity; retry shortly', type: 'gateway_overloaded' }
+        });
+
+        const slowResponse = await slow;
+        expect(slowResponse.status).toBe(200);
+        expect(slowResponse.body.output[0].content[0].text).toBe('slow answer');
+    }, 20_000);
+
     test('a client disconnect releases the conversation lock', async () => {
         const harness = await shortLock(400, {
             runtime: { eventStream: createEventFactory({ deltas: ['partial '], omitFinish: true }) }
