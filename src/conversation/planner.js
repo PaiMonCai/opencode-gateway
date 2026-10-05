@@ -151,6 +151,43 @@ export function deliverableMessages(messages) {
 }
 
 /**
+ * True when at least one delivered message carries content the runtime can act
+ * on. This is evaluated against the delivered slice, so a reused session does
+ * not count earlier turns that are already present upstream.
+ *
+ * @param {Array<Record<string, any>>|unknown} messages Full client history.
+ * @param {number} [includeFromIndex] First non-system message index to inspect.
+ * @returns {boolean} Whether the turn has usable prompt content.
+ */
+export function hasDeliverablePromptContent(messages, includeFromIndex = 0) {
+    let deliveredCount = -1;
+    for (const message of Array.isArray(messages) ? messages : []) {
+        const role = String(message?.role || 'user').toLowerCase();
+        if (role === 'system') continue;
+        deliveredCount += 1;
+        if (deliveredCount < includeFromIndex) continue;
+
+        const content = message?.content;
+        if (typeof content === 'string' && content.length > 0) return true;
+        if (
+            Array.isArray(content) &&
+            content.some((part) => {
+                if (!part) return false;
+                if (part.type === 'text') return String(part.text || '').length > 0;
+                return part.type === 'image_url';
+            })
+        ) {
+            return true;
+        }
+        if (role === 'assistant' && Array.isArray(message?.tool_calls) && message.tool_calls.length) {
+            return true;
+        }
+        if (role === 'tool') return true;
+    }
+    return false;
+}
+
+/**
  * Fingerprint of the tool contract a request carries (names + choice mode).
  * The tool policy rides in the session title and is fixed when the session is
  * created, so two turns with different tool sets must not share a session.

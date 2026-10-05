@@ -31,6 +31,7 @@ export {
     planPinnedTurn,
     prefixDigest,
     deliverableMessages,
+    hasDeliverablePromptContent,
     canonicalMessageFingerprint,
     canonicalize,
     hashMessage,

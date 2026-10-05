@@ -83,6 +83,7 @@ is on. Never log secrets (api keys, passwords, bearer tokens).
 ```js
 class GatewayError extends Error { statusCode; code; type; details; expose }
 toOpenAIError(error) -> { statusCode, body }          // our own errors, OpenAI shape
+transformUpstreamError(error) -> { statusCode, error } // route-compatible upstream mapping
 isTransientUpstreamError(error) -> boolean            // retry policy (see §4)
 ```
 
@@ -112,6 +113,8 @@ Registry.resolveTurn({ headers, scope, deliverable, previousSessionId }) -> {
 Registry.storeTurn({ key, sessionId, mode, plan, replyText, startKey })
 Registry.discard({ key })            // drop entry + close the session it owned
 Registry.sweep()                     // TTL + size caps
+
+hasDeliverablePromptContent(messages, includeFromIndex) -> boolean
 ```
 
 Identity comes from the first non-empty header in the configured order, and the
@@ -197,7 +200,8 @@ identity headers. Upstream errors are relayed verbatim (status + body). A `401`/
 ### src/tools
 
 Text-contract tooling for the runtime path only (`contracts`, `parser`,
-`registry`, `router`, `policy`, `validator`). Same observable behaviour as today:
+`registry`, `router`, `policy`, `validator`, internal allowlist resolution).
+Same observable behaviour as today:
 client `tools` are exposed as a text contract, native calls are steered back, and
 the execution-time plugin enforces the policy carried in the session title.
 
@@ -225,7 +229,10 @@ Routes: `GET /health`, `GET /health/details`, `GET /metrics`,
 
 Current modularization boundary:
 
-- `engine.js`: Chat/Responses turn orchestration, retry/reconciliation and session state transitions;
+- `engine.js`: Chat/Responses turn orchestration and conversation/session state transitions;
+- `runtime-attempt.js`: prompt dispatch + stream/poll observation ordering;
+- `runtime-retry.js`: transient retry policy, failed-session rotation and backoff;
+- `runtime-reconciliation.js`: event-stream → polling reconciliation and missing-delta recovery;
 - `streaming/sse.js`: shared SSE framing plus direct-upstream stream relay;
 - `streaming/chat-writer.js`: Chat Completions chunk rendering;
 - `streaming/responses-writer.js`: Responses sequence numbers, output scaffolds and event rendering;
@@ -234,7 +241,11 @@ Current modularization boundary:
 - `direct-turn.js`: one direct upstream attempt, fallback classification and downstream relay;
 - `conversation/response-chains.js`: `previous_response_id` state;
 - `conversation/storage-cleanup.js`: OpenCode storage sweeping and timer lifecycle;
-- `concurrency/turn-limiter.js`: bounded process-wide turn capacity.
+- `concurrency/turn-limiter.js`: bounded process-wide turn capacity;
+- `errors/mapping.js`: OpenAI/gateway/upstream error rendering and retry classification;
+- `http/image-data.js`: remote multimodal image loading and data-URI conversion;
+- `tools/internal-resolution.js`: built-in tool id normalization and allowlist resolution;
+- `tools/stream-reconciliation.js`: end-of-stream parser/filter flush and cross-channel tool-call recovery.
 
 The HTTP contract — endpoints, request fields, response shapes, error codes —
 is exactly what `docs/{zh,en}/api-reference.md` documents. Refactors must not

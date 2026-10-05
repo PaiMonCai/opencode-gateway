@@ -13,7 +13,8 @@ import {
     asGatewayError,
     codeForStatus,
     isTransientUpstreamError,
-    toOpenAIError
+    toOpenAIError,
+    transformUpstreamError
 } from '../../../src/errors/index.js';
 
 describe('toOpenAIError', () => {
@@ -222,5 +223,84 @@ describe('isTransientUpstreamError', () => {
         expect(isTransientUpstreamError(null)).toBe(false);
         expect(isTransientUpstreamError(undefined)).toBe(false);
         expect(isTransientUpstreamError('rate limit')).toBe(false);
+    });
+});
+
+describe('transformUpstreamError', () => {
+    test('hides unexpected internal error details', () => {
+        expect(transformUpstreamError(new TypeError('secret details'))).toEqual({
+            statusCode: 500,
+            error: {
+                message: 'Internal server error',
+                type: 'server_error',
+                code: 'internal_error'
+            }
+        });
+    });
+
+    test('maps timeout and file access failures exactly', () => {
+        expect(transformUpstreamError(new Error('Request timeout after 1000ms'))).toEqual({
+            statusCode: 504,
+            error: { message: 'Request timeout', type: 'timeout', code: 'timeout' }
+        });
+
+        const fileError = transformUpstreamError(new Error('ENOENT: missing file'));
+        expect(fileError.statusCode).toBe(500);
+        expect(fileError.error.code).toBe('file_access_error');
+    });
+
+    test('maps provider quota, rate-limit and model failures', () => {
+        const quota = Object.assign(new Error('insufficient credits'), {
+            name: 'CreditsError',
+            statusCode: 401,
+            code: 'CreditsError'
+        });
+        expect(transformUpstreamError(quota)).toEqual({
+            statusCode: 402,
+            error: {
+                message: 'insufficient credits',
+                type: 'insufficient_quota',
+                code: 'insufficient_quota'
+            }
+        });
+
+        const limited = Object.assign(new Error('too many requests'), {
+            name: 'RateLimitError',
+            statusCode: 429,
+            code: 'RateLimitError'
+        });
+        expect(transformUpstreamError(limited).statusCode).toBe(429);
+
+        const missing = Object.assign(new Error('model not found'), {
+            name: 'NotFoundError',
+            statusCode: 404,
+            code: 'model_not_found',
+            availableModels: ['opencode/example']
+        });
+        expect(transformUpstreamError(missing)).toEqual({
+            statusCode: 404,
+            error: {
+                message: 'model not found',
+                type: 'invalid_request_error',
+                code: 'model_not_found',
+                available_models: ['opencode/example']
+            }
+        });
+    });
+
+    test('maps upstream server failures to a gateway 502', () => {
+        const upstream = Object.assign(new Error('provider unavailable'), {
+            name: 'ProviderError',
+            statusCode: 503,
+            code: 'ProviderError'
+        });
+        expect(transformUpstreamError(upstream)).toEqual({
+            statusCode: 502,
+            error: {
+                message: 'provider unavailable',
+                type: 'server_error',
+                code: 'server_error'
+            }
+        });
     });
 });
