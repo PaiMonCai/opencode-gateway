@@ -19,6 +19,7 @@ describe('config defaults', () => {
         expect(config.OPENCODE_SERVER_URL).toBe('http://127.0.0.1:10001');
         expect(config.OPENCODE_SERVER_PASSWORD).toBe('');
         expect(config.API_KEY).toBe('');
+        expect(config.ALLOW_PUBLIC_NO_AUTH).toBe(false);
         expect(config.ZEN_API_KEY).toBe('');
         expect(config.MANAGE_BACKEND).toBe(true);
         expect(config.OPENCODE_PATH).toBe('opencode');

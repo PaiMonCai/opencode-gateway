@@ -293,6 +293,15 @@ const FIELDS = [
         banner: (value) => `  - API Key: ${value ? 'Configured' : 'Not configured (no auth)'}`
     },
     {
+        key: 'ALLOW_PUBLIC_NO_AUTH',
+        env: ['OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH'],
+        fileKey: 'ALLOW_PUBLIC_NO_AUTH',
+        type: 'boolean',
+        default: false,
+        description: 'Explicitly allow an unauthenticated non-loopback listener',
+        banner: (value) => `  - Public No-Auth Override: ${value ? 'Yes' : 'No'}`
+    },
+    {
         key: 'ZEN_API_KEY',
         env: ['OPENCODE_ZEN_API_KEY'],
         fileKey: 'ZEN_API_KEY',
@@ -807,6 +816,7 @@ const REMOVED_FILE_KEY_NOTES = Object.freeze(
  * @property {string} OPENCODE_SERVER_URL
  * @property {string} OPENCODE_SERVER_PASSWORD
  * @property {string} API_KEY
+ * @property {boolean} ALLOW_PUBLIC_NO_AUTH
  * @property {string} ZEN_API_KEY
  * @property {boolean} MANAGE_BACKEND
  * @property {string} OPENCODE_PATH

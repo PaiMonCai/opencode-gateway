@@ -16,7 +16,6 @@
  */
 
 import crypto from 'node:crypto';
-import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
 import path from 'node:path';
@@ -24,21 +23,25 @@ import { fileURLToPath } from 'node:url';
 
 import { isTransientUpstreamError } from '../errors/index.js';
 import { createTurnLimiter } from '../concurrency/turn-limiter.js';
+import { createOperationalSurface } from './operations.js';
+import { createModelResolver } from './model-resolver.js';
 import { createResponseChainIndex } from '../conversation/response-chains.js';
+import { createStorageCleanup } from '../conversation/storage-cleanup.js';
 import {
     conversationScopeFor as scopedConversationKey,
     deliverableMessages as deliverableConversationMessages,
     snapshotSessionState as conversationBaseline,
     toolsFingerprintFor
 } from '../conversation/index.js';
+import { newSessionId } from '../upstreams/direct-client.js';
+import { createDirectTurnRunner } from './direct-turn.js';
+import { createChatStreamWriter } from './streaming/chat-writer.js';
 import {
-    collectSseDeltaText,
-    extractAssistantText,
-    isDirectAuthFailure,
-    isFreeTierRefusal,
-    newSessionId,
-    rewriteSseModel
-} from '../upstreams/direct-client.js';
+    buildResponsesFunctionCallOutputItem,
+    buildResponsesMessageOutputItem,
+    createResponsesStreamWriter
+} from './streaming/responses-writer.js';
+import { writeResponsesFailure } from './streaming/sse.js';
 import {
     EXTERNAL_TOOL_PREFIX,
     buildExternalToolRegistry,
@@ -604,6 +607,12 @@ export function createTurnEngine({
     const runtime = router.runtime;
     const direct = router.direct;
 
+    const { listModels: getKnownModels, resolveRequestedModel } = createModelResolver({
+        runtime,
+        direct,
+        logDebug
+    });
+
     /**
      * Session state reader the conversation registry uses for baselines.
      *
@@ -741,84 +750,6 @@ export function createTurnEngine({
         }
     });
 
-    /** Runtime catalog first, upstream catalogs second, empty third. */
-    const getKnownModels = async () => {
-        try {
-            const models = await runtime.listModels();
-            if (Array.isArray(models) && models.length) return models;
-        } catch (error) {
-            logDebug('Runtime model list unavailable', { error: /** @type {Error} */ (error).message });
-        }
-        const upstreamModels = await direct.listModels().catch(() => null);
-        return Array.isArray(upstreamModels) && upstreamModels.length ? upstreamModels : [];
-    };
-
-    /**
-     * Spell the gpt/o-series ids the way the backend catalog does.
-     *
-     * @param {string|undefined} modelID Model id as requested.
-     * @returns {string|undefined} Normalized id.
-     */
-    const normalizeModelID = (modelID) => {
-        if (!modelID || typeof modelID !== 'string') return modelID;
-        return modelID.replace(/^gpt(\d)/i, 'gpt-$1').replace(/^o(\d)/i, 'o$1');
-    };
-
-    /**
-     * Resolve the client's model name to a provider/bare-id pair.
-     *
-     * @param {string|undefined} requestedModel Model as requested.
-     * @returns {Promise<{providerID: string, modelID: string, models: Array<object>, resolved: string, aliasFrom?: string}>}
-     * @throws {Error} 404 `model_not_found` when no catalog entry matches.
-     */
-    const resolveRequestedModel = async (requestedModel) => {
-        const models = await getKnownModels();
-        const fallbackModel = models[0]?.id || 'opencode/kimi-k2.5-free';
-        let [providerID, modelID] = (requestedModel || fallbackModel).split('/');
-        if (!modelID) {
-            modelID = providerID;
-            providerID = 'opencode';
-        }
-        const originalModelID = modelID;
-        const normalizedModelID = normalizeModelID(modelID);
-        const candidateModelIDs = [...new Set([modelID, normalizedModelID].filter(Boolean))];
-        const exact = models.find((m) =>
-            candidateModelIDs.some((candidate) => m.id === `${providerID}/${candidate}`)
-        );
-        if (exact) {
-            const [, resolvedModelID] = exact.id.split('/');
-            return {
-                providerID,
-                modelID: resolvedModelID,
-                models,
-                resolved: exact.id,
-                ...(resolvedModelID !== originalModelID && { aliasFrom: `${providerID}/${originalModelID}` })
-            };
-        }
-        const sameProvider = models.filter((m) => m.owned_by === providerID);
-        const suffixMatch = sameProvider.find((m) =>
-            candidateModelIDs.some(
-                (candidate) => m.id.endsWith(`/${candidate}-free`) || m.id.endsWith(`/${candidate}`)
-            )
-        );
-        if (suffixMatch) {
-            const [, resolvedModelID] = suffixMatch.id.split('/');
-            return {
-                providerID,
-                modelID: resolvedModelID,
-                models,
-                resolved: suffixMatch.id,
-                aliasFrom: `${providerID}/${originalModelID}`
-            };
-        }
-        /** @type {UpstreamErrorLike} */
-        const error = new Error(`Model not found: ${providerID}/${modelID}`);
-        error.statusCode = 404;
-        error.code = 'model_not_found';
-        error.availableModels = models.map((m) => m.id);
-        throw error;
-    };
-
     const RESPONSE_STATE_SWEEP_INTERVAL_MS = 60 * 1000;
 
     /**
@@ -843,7 +774,6 @@ export function createTurnEngine({
     if (typeof responseStateSweepTimer.unref === 'function') responseStateSweepTimer.unref();
 
     const {
-        API_KEY,
         OPENCODE_SERVER_URL,
         REQUEST_TIMEOUT_MS,
         MAX_CONCURRENT_TURNS = 20,
@@ -855,10 +785,6 @@ export function createTurnEngine({
         INTERNAL_ALLOWED_TOOLS = [],
         INTERNAL_TOOL_METRICS_ENABLED = true,
         INTERNAL_TOOL_DISCOVERY_FIXTURE = [],
-        HEALTH_DETAILS_ENABLED = true,
-        HEALTH_DETAILS_REQUIRE_AUTH = true,
-        METRICS_ENABLED = false,
-        METRICS_REQUIRE_AUTH = true,
         PROMPT_MODE,
         OMIT_SYSTEM_PROMPT,
         AUTO_CLEANUP_CONVERSATIONS,
@@ -1251,6 +1177,17 @@ export function createTurnEngine({
         fallbackToDisabled: 0
     };
 
+    const operationalSurface = createOperationalSurface({
+        config,
+        capacityLimiter,
+        allowedToolNames: SERVER_INTERNAL_ALLOWED_TOOL_NAMES,
+        discoveryFixture: normalizeConfiguredToolNames(INTERNAL_TOOL_DISCOVERY_FIXTURE),
+        internalToolMetrics,
+        getToolCacheSnapshot: () => ({ ids: cachedToolIds, updatedAt: cachedToolIdsAt })
+    });
+    const { handleHealth, handleHealthDetails, handleMetrics, getInternalToolDashboard, renderMetrics } =
+        operationalSurface;
+
     /**
      * @param {string} event Event name.
      * @param {Record<string, unknown>} [details] Event payload.
@@ -1590,228 +1527,20 @@ export function createTurnEngine({
             signal: externalSignal
         });
 
-    /** @returns {string[]} Storage roots the cleanup sweep walks. */
-    const getCleanupRoots = () => {
-        /** @type {string[]} */
-        const roots = [];
-        /** @param {string|null} dir Directory candidate. @returns {void} */
-        const add = (dir) => {
-            if (!dir) return;
-            if (!roots.includes(dir)) roots.push(dir);
-        };
-        add(
-            OPENCODE_HOME_BASE
-                ? path.join(OPENCODE_HOME_BASE, '.local', 'share', 'opencode', 'storage')
-                : null
-        );
-        add('/home/node/.local/share/opencode/storage');
-        return roots;
-    };
+    const storageCleanup = createStorageCleanup({
+        enabled: AUTO_CLEANUP_CONVERSATIONS,
+        intervalMs: CLEANUP_INTERVAL_MS,
+        maxAgeMs: CLEANUP_MAX_AGE_MS,
+        homeBase: OPENCODE_HOME_BASE,
+        logDebug
+    });
+    const cleanupConversationFiles = storageCleanup.cleanup;
 
-    const cleanupConversationFiles = async () => {
-        if (!AUTO_CLEANUP_CONVERSATIONS) return { removed: 0, scanned: 0 };
-        const now = Date.now();
-        let removed = 0;
-        let scanned = 0;
-        for (const storageRoot of getCleanupRoots()) {
-            for (const sub of ['message', 'session']) {
-                const dir = path.join(storageRoot, sub);
-                if (!fs.existsSync(dir)) continue;
-                let entries;
-                try {
-                    entries = fs.readdirSync(dir, { withFileTypes: true });
-                } catch (e) {
-                    continue;
-                }
-                for (const entry of entries) {
-                    const full = path.join(dir, entry.name);
-                    let stat;
-                    try {
-                        stat = fs.statSync(full);
-                    } catch (e) {
-                        continue;
-                    }
-                    scanned += 1;
-                    const mtime = stat.mtimeMs || stat.ctimeMs || now;
-                    if (now - mtime < CLEANUP_MAX_AGE_MS) continue;
-                    try {
-                        fs.rmSync(full, { recursive: true, force: true });
-                        removed += 1;
-                    } catch (e) {
-                        logDebug('Cleanup remove failed', { full, error: /** @type {Error} */ (e).message });
-                    }
-                }
-            }
-        }
-        if (removed > 0) {
-            logDebug('Conversation cleanup completed', { removed, scanned, maxAgeMs: CLEANUP_MAX_AGE_MS });
-        }
-        return { removed, scanned };
-    };
-
-    if (AUTO_CLEANUP_CONVERSATIONS) {
-        setTimeout(() => {
-            cleanupConversationFiles().catch((e) => logDebug('Cleanup run failed', { error: e.message }));
-        }, 3000);
-        const cleanupTimer = setInterval(() => {
-            cleanupConversationFiles().catch((e) => logDebug('Cleanup run failed', { error: e.message }));
-        }, CLEANUP_INTERVAL_MS);
-        if (cleanupTimer.unref) cleanupTimer.unref();
-    }
-
-    /**
-     * Serve one turn straight from the upstream, relaying its response verbatim.
-     *
-     * @param {object} params Turn input.
-     * @param {'/chat/completions'|'/responses'} params.path Upstream surface to call.
-     * @param {import('express').Response} params.res Response to write to.
-     * @param {string} params.providerID Resolved provider id.
-     * @param {string} params.modelID Resolved bare model id.
-     * @param {string} params.sessionId Direct session id.
-     * @param {unknown} params.body Body to forward.
-     * @param {boolean} params.stream Whether the client asked for SSE.
-     * @param {string} params.clientModelName Model name to echo back.
-     * @param {AbortSignal} params.signal Aborts with the client request.
-     * @param {FallbackTurn|null} [params.fallbackTurn] Turn the router records when the
-     *   direct upstream refuses.
-     * @param {((answerText: string|null) => void)|null} [params.onSuccess] Called with the
-     *   assistant text once the turn succeeded.
-     * @returns {Promise<{handled: boolean, reason?: string}>} Whether this turn answered.
-     */
-    const runDirectTurn = async ({
-        path,
-        res,
-        providerID,
-        modelID,
-        sessionId,
-        body,
-        stream,
-        clientModelName,
-        signal,
-        fallbackTurn = null,
-        onSuccess = null
-    }) => {
-        const directRequest = {
-            providerID,
-            modelID,
-            body,
-            stream: Boolean(stream),
-            sessionId,
-            signal
-        };
-        const allowsFallback = router.allowsFallback();
-        /**
-         * Record the failure with the router (it learns free-tier models and drops
-         * the direct session state) and tell the caller to try the runtime.
-         *
-         * @param {'free-tier'|'auth'|'transport'} reason Failure kind.
-         * @returns {{handled: boolean, reason: string}} Not handled, with the reason.
-         */
-        const fallback = (reason) => {
-            if (fallbackTurn) router.fallback(fallbackTurn, reason);
-            return { handled: false, reason };
-        };
-
-        let upstreamResponse;
-        try {
-            upstreamResponse =
-                path === '/chat/completions'
-                    ? await direct.chatCompletion(directRequest)
-                    : await direct.responses(directRequest);
-        } catch (error) {
-            logWarn('[Proxy] Direct upstream request failed:', {
-                error: /** @type {Error} */ (error).message
-            });
-            if (allowsFallback) return fallback('transport');
-            throw error;
-        }
-
-        /**
-         * @param {number} status HTTP status to relay.
-         * @param {string} detail Body to relay.
-         * @param {string|null|undefined} [contentType] Content type to relay.
-         * @returns {Promise<{handled: boolean}>} Always handled.
-         */
-        const relayFailure = async (status, detail, contentType) => {
-            if (res.headersSent) return { handled: true };
-            res.status(status)
-                .type(contentType || 'application/json')
-                .send(detail);
-            return { handled: true };
-        };
-
-        if (isDirectAuthFailure(upstreamResponse.status)) {
-            const detail = await upstreamResponse.text().catch(() => '');
-            // Free-tier models are refused to any client that is not the official
-            // one. That is a property of the model, so stop asking for it.
-            if (isFreeTierRefusal(upstreamResponse.status, detail)) {
-                logWarn(
-                    `[Proxy] ${clientModelName} is served to the runtime only (free tier); routing it there from now on`
-                );
-                if (allowsFallback) return fallback('free-tier');
-            }
-            if (allowsFallback) {
-                logWarn(
-                    `[Proxy] Direct upstream rejected the key (${upstreamResponse.status}); using the runtime:`,
-                    {
-                        detail: detail.slice(0, 200)
-                    }
-                );
-                return fallback('auth');
-            }
-            return relayFailure(
-                upstreamResponse.status,
-                detail || JSON.stringify({ error: { message: 'Upstream rejected the configured key' } }),
-                upstreamResponse.headers?.get?.('content-type')
-            );
-        }
-
-        // Everything else is relayed verbatim: gateways depend on the upstream's
-        // own error shapes (quota, rate limit, model not found, ...).
-        if (!upstreamResponse.ok) {
-            const detail = await upstreamResponse.text().catch(() => '');
-            return relayFailure(
-                upstreamResponse.status,
-                detail,
-                upstreamResponse.headers?.get?.('content-type')
-            );
-        }
-
-        const contentType = upstreamResponse.headers?.get?.('content-type') || '';
-        const isEventStream = Boolean(stream) && (contentType.includes('text/event-stream') || !contentType);
-
-        if (!isEventStream) {
-            const payload = await upstreamResponse.json();
-            const answerText = extractAssistantText(payload);
-            if (payload && typeof payload === 'object') {
-                if (payload.model !== undefined) payload.model = clientModelName;
-                if (
-                    payload.response &&
-                    typeof payload.response === 'object' &&
-                    payload.response.model !== undefined
-                ) {
-                    payload.response.model = clientModelName;
-                }
-            }
-            if (onSuccess) onSuccess(answerText);
-            if (!res.headersSent) res.json(payload);
-            return { handled: true };
-        }
-
-        res.setHeader('Content-Type', 'text/event-stream');
-        res.setHeader('Cache-Control', 'no-cache');
-        res.setHeader('Connection', 'keep-alive');
-        res.flushHeaders?.();
-        let streamedContent = '';
-        for await (const chunk of rewriteSseModel(upstreamResponse.body, clientModelName)) {
-            if (res.writableEnded || res.destroyed) break;
-            streamedContent += collectSseDeltaText(chunk);
-            res.write(chunk);
-        }
-        if (onSuccess) onSuccess(streamedContent);
-        if (!res.writableEnded && !res.destroyed) res.end();
-        return { handled: true };
-    };
+    const runDirectTurn = createDirectTurnRunner({
+        direct,
+        router,
+        logWarn
+    });
 
     /**
      * `POST /v1/chat/completions`.
@@ -2379,6 +2108,11 @@ export function createTurnEngine({
                     keepaliveInterval = null;
                     completionTokens = 0;
                     reasoningTokens = 0;
+                    const chatStreamWriter = createChatStreamWriter({
+                        res,
+                        id,
+                        model: `${pID}/${mID}`
+                    });
 
                     const ensureKeepalive = () => {
                         if (!keepaliveInterval) {
@@ -2405,33 +2139,7 @@ export function createTurnEngine({
                             : parseContentToolCalls(delta);
                         parsedDeltaToolCalls.forEach((toolCall) => {
                             streamedToolCalls.push(toolCall);
-                            res.write(
-                                `data: ${JSON.stringify({
-                                    id,
-                                    object: 'chat.completion.chunk',
-                                    created: Math.floor(Date.now() / 1000),
-                                    model: `${pID}/${mID}`,
-                                    choices: [
-                                        {
-                                            index: 0,
-                                            delta: {
-                                                tool_calls: [
-                                                    {
-                                                        index: streamedToolCalls.length - 1,
-                                                        id: toolCall.id,
-                                                        type: 'function',
-                                                        function: {
-                                                            name: toolCall.function.name,
-                                                            arguments: toolCall.function.arguments
-                                                        }
-                                                    }
-                                                ]
-                                            },
-                                            finish_reason: null
-                                        }
-                                    ]
-                                })}\n\n`
-                            );
+                            chatStreamWriter.toolCall(toolCall, streamedToolCalls.length - 1);
                         });
                         const filtered = isReasoning
                             ? filterReasoningDelta(delta)
@@ -2444,20 +2152,9 @@ export function createTurnEngine({
                             streamedContent += filtered;
                             completionTokens += Math.ceil(filtered.length / 4);
                         }
-                        // Reasoning and answer are streamed as separate fields so clients
-                        // that read `reasoning_content` (DeepSeek/Qwen-style) see the thinking
-                        // without it polluting `content`.
-                        const deltaField = isReasoning
-                            ? { reasoning_content: filtered }
-                            : { content: filtered };
-                        const chunk = {
-                            id,
-                            object: 'chat.completion.chunk',
-                            created: Math.floor(Date.now() / 1000),
-                            model: `${pID}/${mID}`,
-                            choices: [{ index: 0, delta: deltaField, finish_reason: null }]
-                        };
-                        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                        // Reasoning and answer remain separate wire fields; the writer owns
+                        // only the Chat Completions SSE framing.
+                        chatStreamWriter.delta(filtered, isReasoning);
                     };
 
                     let collected = null;
@@ -2701,56 +2398,15 @@ export function createTurnEngine({
                     );
                     const finalStreamedToolCalls = validatedStreamedToolCalls;
                     if (finalStreamedToolCalls.length > 0 && streamedToolCalls.length === 0) {
-                        const toolCallDeltas = finalStreamedToolCalls.map((toolCall, index) => ({
-                            index,
-                            id: toolCall.id,
-                            type: 'function',
-                            function: {
-                                name: toolCall.function.name,
-                                arguments: toolCall.function.arguments
-                            }
-                        }));
-                        res.write(
-                            `data: ${JSON.stringify({
-                                id,
-                                object: 'chat.completion.chunk',
-                                created: Math.floor(Date.now() / 1000),
-                                model: `${pID}/${mID}`,
-                                choices: [
-                                    {
-                                        index: 0,
-                                        delta: { tool_calls: toolCallDeltas },
-                                        finish_reason: null
-                                    }
-                                ]
-                            })}\n\n`
-                        );
+                        chatStreamWriter.toolCalls(finalStreamedToolCalls);
                     }
 
                     if (keepaliveInterval) clearInterval(keepaliveInterval);
 
                     const promptTokens = Math.ceil((fullPromptText || '').length / 4);
-                    const totalTokens = promptTokens + completionTokens + reasoningTokens;
-
-                    res.write(
-                        `data: ${JSON.stringify({
-                            id,
-                            choices: [
-                                {
-                                    index: 0,
-                                    delta: {},
-                                    finish_reason: finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
-                                }
-                            ],
-                            usage: {
-                                prompt_tokens: promptTokens,
-                                completion_tokens: completionTokens + reasoningTokens,
-                                total_tokens: totalTokens,
-                                completion_tokens_details: {
-                                    reasoning_tokens: reasoningTokens
-                                }
-                            }
-                        })}\n\n`
+                    chatStreamWriter.finish(
+                        { promptTokens, completionTokens, reasoningTokens },
+                        finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
                     );
                     storeConversationEntry(conversationKey, {
                         sessionId,
@@ -2759,7 +2415,7 @@ export function createTurnEngine({
                         replyText: streamedContent || null,
                         startKey: derivedIdentity?.startKey || null
                     });
-                    res.write('data: [DONE]\n\n');
+                    chatStreamWriter.done();
                     res.end();
                 } else {
                     let content = '';
@@ -2943,206 +2599,6 @@ export function createTurnEngine({
                 });
             }
         }
-    };
-
-    /**
-     * @param {import('express').Request} req Incoming request.
-     * @returns {boolean} True when the request carries the configured bearer token.
-     */
-    const hasValidBearerAuth = (req) => {
-        if (!API_KEY || API_KEY.trim() === '') return true;
-        const authHeader = req.headers.authorization;
-        return Boolean(authHeader && authHeader === `Bearer ${API_KEY}`);
-    };
-
-    /**
-     * @param {import('express').Request} req Incoming request.
-     * @param {{enabled: boolean, requireAuth: boolean}} options Probe settings.
-     * @returns {boolean} True when the probe may answer this request.
-     */
-    const shouldAllowOperationalEndpoint = (req, { enabled, requireAuth }) => {
-        if (!enabled) return false;
-        if (!requireAuth) return true;
-        return hasValidBearerAuth(req);
-    };
-
-    /**
-     * @param {import('express').Request} _req Unused request.
-     * @param {import('express').Response} res Response to write.
-     * @returns {import('express').Response} The response.
-     */
-    const handleHealth = (_req, res) =>
-        res.json({
-            status: 'ok',
-            proxy: true
-        });
-
-    /**
-     * @param {import('express').Request} req Incoming request.
-     * @param {import('express').Response} res Response to write.
-     * @returns {unknown} The response, or undefined when it was already sent.
-     */
-    const handleHealthDetails = (req, res) => {
-        if (
-            !shouldAllowOperationalEndpoint(req, {
-                enabled: HEALTH_DETAILS_ENABLED,
-                requireAuth: HEALTH_DETAILS_REQUIRE_AUTH
-            })
-        ) {
-            // BEHAVIOUR-SPEC §1: the operational probes answer plain text, unlike
-            // the OpenAI-shaped 401 of the /v1 surface.
-            return res
-                .status(HEALTH_DETAILS_ENABLED ? 401 : 404)
-                .send(HEALTH_DETAILS_ENABLED ? 'Unauthorized' : 'Not found');
-        }
-        const metricsSnapshot = INTERNAL_TOOL_METRICS_ENABLED ? { ...internalToolMetrics } : null;
-        res.json({
-            status: 'ok',
-            proxy: true,
-            concurrency: capacityLimiter.snapshot(),
-            internal_tools: {
-                config: {
-                    allowed_tools: SERVER_INTERNAL_ALLOWED_TOOL_NAMES,
-                    metrics_enabled: INTERNAL_TOOL_METRICS_ENABLED,
-                    discovery_fixture: normalizeConfiguredToolNames(INTERNAL_TOOL_DISCOVERY_FIXTURE)
-                },
-                metrics: metricsSnapshot,
-                cache: {
-                    tool_ids_cached: !!cachedToolIds,
-                    tool_id_count: cachedToolIds ? cachedToolIds.length : 0,
-                    age_ms: cachedToolIdsAt ? Date.now() - cachedToolIdsAt : null
-                },
-                audit: {
-                    available: true,
-                    fields: [
-                        'requestedAllowlist',
-                        'allowedToolNames',
-                        'deniedRequestedTools',
-                        'resolutionPath',
-                        'resultingMode'
-                    ]
-                }
-            }
-        });
-    };
-
-    /** @returns {string[]} Prometheus lines for global turn capacity. */
-    const concurrencyMetricLines = () => {
-        const snapshot = capacityLimiter.snapshot();
-        return [
-            '# HELP opencode_gateway_turns_active Turns currently holding global capacity.',
-            '# TYPE opencode_gateway_turns_active gauge',
-            `opencode_gateway_turns_active ${snapshot.active}`,
-            '# HELP opencode_gateway_turns_pending Turns waiting for global capacity.',
-            '# TYPE opencode_gateway_turns_pending gauge',
-            `opencode_gateway_turns_pending ${snapshot.pending}`,
-            '# HELP opencode_gateway_turn_limit Configured global turn concurrency limit.',
-            '# TYPE opencode_gateway_turn_limit gauge',
-            `opencode_gateway_turn_limit ${snapshot.maxConcurrent}`,
-            '# HELP opencode_gateway_turn_pending_limit Configured global pending-turn limit.',
-            '# TYPE opencode_gateway_turn_pending_limit gauge',
-            `opencode_gateway_turn_pending_limit ${snapshot.maxPending}`,
-            '# HELP opencode_gateway_turn_rejections_total Turns rejected because the pending queue was full or fail-fast mode was enabled.',
-            '# TYPE opencode_gateway_turn_rejections_total counter',
-            `opencode_gateway_turn_rejections_total ${snapshot.rejectedTotal}`,
-            '# HELP opencode_gateway_turn_wait_timeouts_total Turns rejected after waiting too long for capacity.',
-            '# TYPE opencode_gateway_turn_wait_timeouts_total counter',
-            `opencode_gateway_turn_wait_timeouts_total ${snapshot.timedOutTotal}`,
-            '# HELP opencode_gateway_turn_aborts_total Queued turns removed because the client disconnected.',
-            '# TYPE opencode_gateway_turn_aborts_total counter',
-            `opencode_gateway_turn_aborts_total ${snapshot.abortedTotal}`
-        ];
-    };
-
-    /**
-     * @param {import('express').Request} req Incoming request.
-     * @param {import('express').Response} res Response to write.
-     * @returns {unknown} The response, or undefined when it was already sent.
-     */
-    const handleMetrics = (req, res) => {
-        if (
-            !shouldAllowOperationalEndpoint(req, {
-                enabled: METRICS_ENABLED,
-                requireAuth: METRICS_REQUIRE_AUTH
-            })
-        ) {
-            return res
-                .status(METRICS_ENABLED ? 401 : 404)
-                .send(METRICS_ENABLED ? 'Unauthorized' : 'Not found');
-        }
-
-        const metricsLines = [
-            '# HELP opencode_internal_tool_mode_requests_total Count of internal tool mode selections by mode.',
-            '# TYPE opencode_internal_tool_mode_requests_total counter',
-            `opencode_internal_tool_mode_requests_total{mode="external_bridge"} ${internalToolMetrics.externalBridgeRequests}`,
-            `opencode_internal_tool_mode_requests_total{mode="internal_allowlist"} ${internalToolMetrics.internalAllowlistRequests}`,
-            `opencode_internal_tool_mode_requests_total{mode="disabled"} ${internalToolMetrics.disabledRequests}`,
-            '# HELP opencode_internal_tool_discovery_failures_total Count of backend tool discovery failures.',
-            '# TYPE opencode_internal_tool_discovery_failures_total counter',
-            `opencode_internal_tool_discovery_failures_total ${internalToolMetrics.discoveryFailures}`,
-            '# HELP opencode_internal_tool_fallback_disabled_total Count of allowlist resolutions that fell back to disabled.',
-            '# TYPE opencode_internal_tool_fallback_disabled_total counter',
-            `opencode_internal_tool_fallback_disabled_total ${internalToolMetrics.fallbackToDisabled}`,
-            '# HELP opencode_internal_tool_cache_ids Number of cached backend tool IDs.',
-            '# TYPE opencode_internal_tool_cache_ids gauge',
-            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`,
-            ...concurrencyMetricLines()
-        ];
-
-        res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
-        res.send(`${metricsLines.join('\n')}\n`);
-    };
-
-    /** @returns {object} Payload behind `/health/details`. */
-    const getInternalToolDashboard = () => ({
-        status: 'ok',
-        proxy: true,
-        concurrency: capacityLimiter.snapshot(),
-        internal_tools: {
-            config: {
-                allowed_tools: SERVER_INTERNAL_ALLOWED_TOOL_NAMES,
-                metrics_enabled: INTERNAL_TOOL_METRICS_ENABLED,
-                discovery_fixture: normalizeConfiguredToolNames(INTERNAL_TOOL_DISCOVERY_FIXTURE)
-            },
-            metrics: INTERNAL_TOOL_METRICS_ENABLED ? { ...internalToolMetrics } : null,
-            cache: {
-                tool_ids_cached: !!cachedToolIds,
-                tool_id_count: cachedToolIds ? cachedToolIds.length : 0,
-                age_ms: cachedToolIdsAt ? Date.now() - cachedToolIdsAt : null
-            },
-            audit: {
-                available: true,
-                fields: [
-                    'requestedAllowlist',
-                    'allowedToolNames',
-                    'deniedRequestedTools',
-                    'resolutionPath',
-                    'resultingMode'
-                ]
-            }
-        }
-    });
-
-    /** @returns {string} Prometheus text for `/metrics`. */
-    const renderMetrics = () => {
-        const metricsLines = [
-            '# HELP opencode_internal_tool_mode_requests_total Count of internal tool mode selections by mode.',
-            '# TYPE opencode_internal_tool_mode_requests_total counter',
-            `opencode_internal_tool_mode_requests_total{mode="external_bridge"} ${internalToolMetrics.externalBridgeRequests}`,
-            `opencode_internal_tool_mode_requests_total{mode="internal_allowlist"} ${internalToolMetrics.internalAllowlistRequests}`,
-            `opencode_internal_tool_mode_requests_total{mode="disabled"} ${internalToolMetrics.disabledRequests}`,
-            '# HELP opencode_internal_tool_discovery_failures_total Count of backend tool discovery failures.',
-            '# TYPE opencode_internal_tool_discovery_failures_total counter',
-            `opencode_internal_tool_discovery_failures_total ${internalToolMetrics.discoveryFailures}`,
-            '# HELP opencode_internal_tool_fallback_disabled_total Count of allowlist resolutions that fell back to disabled.',
-            '# TYPE opencode_internal_tool_fallback_disabled_total counter',
-            `opencode_internal_tool_fallback_disabled_total ${internalToolMetrics.fallbackToDisabled}`,
-            '# HELP opencode_internal_tool_cache_ids Number of cached backend tool IDs.',
-            '# TYPE opencode_internal_tool_cache_ids gauge',
-            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`,
-            ...concurrencyMetricLines()
-        ];
-        return `${metricsLines.join('\n')}\n`;
     };
 
     /**
@@ -3601,70 +3057,13 @@ export function createTurnEngine({
 
             let content = '';
             let reasoning = '';
-            /**
-             * @param {import('../tools/contract.js').WireToolCall} toolCall Validated call.
-             * @returns {Record<string, unknown>} `function_call` output item.
-             */
-            const buildResponsesFunctionCallOutputItem = (toolCall) => ({
-                id: toolCall.id,
-                type: 'function_call',
-                status: 'completed',
-                call_id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: toolCall.function.arguments
-            });
-
-            /**
-             * @param {string|null|undefined} text Answer text.
-             * @returns {Record<string, unknown>|null} `message` output item, or null when empty.
-             */
-            const buildResponsesMessageOutputItem = (text) => {
-                if (!text) return null;
-                return {
-                    type: 'message',
-                    role: 'assistant',
-                    status: 'completed',
-                    content: [
-                        {
-                            type: 'output_text',
-                            text
-                        }
-                    ]
-                };
-            };
-
             if (stream) {
-                res.setHeader('Content-Type', 'text/event-stream');
-                res.setHeader('Cache-Control', 'no-cache');
-                res.setHeader('Connection', 'keep-alive');
-                const responseId = `resp_${crypto.randomUUID()}`;
-                const messageOutputIndex = 0;
-                const reasoningOutputIndex = 1;
-                const contentIndex = 0;
-                const outputItemId = `msg_${crypto.randomUUID()}`;
-                const reasoningItemId = 'reasoning-0';
-                let nextOutputIndex = 2;
-                let sequenceNumber = 0;
-                let announcedOutput = false;
-                let announcedContent = false;
-                let announcedReasoning = false;
-                const nextSeq = () => sequenceNumber++;
-                /**
-                 * @param {Record<string, unknown>} payload SSE event payload.
-                 * @returns {boolean} False when the socket buffer is full.
-                 */
-                const emit = (payload) => res.write(`data: ${JSON.stringify(payload)}\n\n`);
-
-                emit({
-                    type: 'response.created',
-                    sequence_number: nextSeq(),
-                    response: {
-                        id: responseId,
-                        object: 'response',
-                        created: Math.floor(Date.now() / 1000),
-                        model: `${pID}/${mID}`
-                    }
+                const responsesStreamWriter = createResponsesStreamWriter({
+                    res,
+                    model: `${pID}/${mID}`
                 });
+                const { responseId, streamedToolCalls } = responsesStreamWriter;
+                responsesStreamWriter.start();
 
                 const shouldStripStreamingToolMarkup = externalToolRegistry.length > 0;
                 /** @type {ToolCallFilterWithFlush} */
@@ -3689,92 +3088,8 @@ export function createTurnEngine({
                 const parseReasoningToolCalls = /** @type {ExternalToolCallParserWithFlush} */ (
                     createExternalToolCallStreamParser(externalToolRegistry)
                 );
-                /** @type {import('../tools/contract.js').WireToolCall[]} */
-                const streamedToolCalls = [];
                 let rawContent = '';
                 let rawReasoning = '';
-                const ensureOutputScaffold = () => {
-                    if (!announcedOutput) {
-                        emit({
-                            type: 'response.output_item.added',
-                            sequence_number: nextSeq(),
-                            output_index: messageOutputIndex,
-                            item: {
-                                id: outputItemId,
-                                type: 'message',
-                                status: 'in_progress',
-                                role: 'assistant',
-                                content: []
-                            }
-                        });
-                        announcedOutput = true;
-                    }
-                    if (!announcedContent) {
-                        emit({
-                            type: 'response.content_part.added',
-                            sequence_number: nextSeq(),
-                            output_index: messageOutputIndex,
-                            content_index: contentIndex,
-                            item_id: outputItemId,
-                            part: { type: 'output_text', text: '' }
-                        });
-                        announcedContent = true;
-                    }
-                };
-                const ensureReasoningScaffold = () => {
-                    if (!announcedReasoning) {
-                        emit({
-                            type: 'response.output_item.added',
-                            sequence_number: nextSeq(),
-                            output_index: reasoningOutputIndex,
-                            item: {
-                                id: reasoningItemId,
-                                type: 'reasoning',
-                                status: 'in_progress',
-                                summary: [{ type: 'summary_text', text: '' }]
-                            }
-                        });
-                        announcedReasoning = true;
-                    }
-                };
-                /**
-                 * @param {import('../tools/contract.js').WireToolCall} toolCall Validated call.
-                 * @returns {void}
-                 */
-                const emitResponsesFunctionCall = (toolCall) => {
-                    const outputIndex = nextOutputIndex++;
-                    const functionCallItem = buildResponsesFunctionCallOutputItem(toolCall);
-                    streamedToolCalls.push(toolCall);
-                    emit({
-                        type: 'response.output_item.added',
-                        sequence_number: nextSeq(),
-                        output_index: outputIndex,
-                        item: {
-                            ...functionCallItem,
-                            status: 'in_progress'
-                        }
-                    });
-                    emit({
-                        type: 'response.function_call_arguments.delta',
-                        sequence_number: nextSeq(),
-                        output_index: outputIndex,
-                        item_id: toolCall.id,
-                        delta: toolCall.function.arguments
-                    });
-                    emit({
-                        type: 'response.function_call_arguments.done',
-                        sequence_number: nextSeq(),
-                        output_index: outputIndex,
-                        item_id: toolCall.id,
-                        arguments: toolCall.function.arguments
-                    });
-                    emit({
-                        type: 'response.output_item.done',
-                        sequence_number: nextSeq(),
-                        output_index: outputIndex,
-                        item: functionCallItem
-                    });
-                };
                 /**
                  * @param {string} delta Text delta.
                  * @param {boolean} [isReasoning] Whether the delta is reasoning text.
@@ -3792,36 +3107,22 @@ export function createTurnEngine({
                             parsedDeltaToolCalls,
                             externalToolRegistry
                         );
-                        allowedDeltaToolCalls.forEach((toolCall) => emitResponsesFunctionCall(toolCall));
+                        allowedDeltaToolCalls.forEach((toolCall) =>
+                            responsesStreamWriter.functionCall(toolCall)
+                        );
                     }
                     const filtered = isReasoning ? filterReasoningDelta(delta) : filterContentDelta(delta);
                     if (!filtered) return;
                     if (isReasoning) {
-                        ensureReasoningScaffold();
                         reasoning += filtered;
-                        emit({
-                            type: 'response.reasoning_summary_text.delta',
-                            sequence_number: nextSeq(),
-                            output_index: reasoningOutputIndex,
-                            item_id: reasoningItemId,
-                            summary_index: 0,
-                            delta: filtered
-                        });
+                        responsesStreamWriter.reasoningDelta(filtered);
                     } else {
                         if (!filtered.trim()) {
                             content += filtered;
                             return;
                         }
-                        ensureOutputScaffold();
                         content += filtered;
-                        emit({
-                            type: 'response.output_text.delta',
-                            sequence_number: nextSeq(),
-                            output_index: messageOutputIndex,
-                            content_index: contentIndex,
-                            item_id: outputItemId,
-                            delta: filtered
-                        });
+                        responsesStreamWriter.textDelta(filtered);
                     }
                 };
 
@@ -3885,60 +3186,8 @@ export function createTurnEngine({
                     if (!content && collected.content) sendResponsesDelta(collected.content, false);
                 }
 
-                if (announcedReasoning) {
-                    emit({
-                        type: 'response.reasoning_summary_text.done',
-                        sequence_number: nextSeq(),
-                        output_index: reasoningOutputIndex,
-                        item_id: reasoningItemId,
-                        summary_index: 0,
-                        text: reasoning
-                    });
-                    emit({
-                        type: 'response.output_item.done',
-                        sequence_number: nextSeq(),
-                        output_index: reasoningOutputIndex,
-                        item: {
-                            id: reasoningItemId,
-                            type: 'reasoning',
-                            status: 'completed',
-                            summary: [{ type: 'summary_text', text: reasoning }]
-                        }
-                    });
-                }
-
-                const hasMeaningfulContent = Boolean(content && content.trim());
-
-                if (announcedContent && hasMeaningfulContent) {
-                    emit({
-                        type: 'response.output_text.done',
-                        sequence_number: nextSeq(),
-                        output_index: messageOutputIndex,
-                        content_index: contentIndex,
-                        item_id: outputItemId,
-                        text: content
-                    });
-                    emit({
-                        type: 'response.content_part.done',
-                        sequence_number: nextSeq(),
-                        output_index: messageOutputIndex,
-                        content_index: contentIndex,
-                        item_id: outputItemId,
-                        part: { type: 'output_text', text: content }
-                    });
-                    emit({
-                        type: 'response.output_item.done',
-                        sequence_number: nextSeq(),
-                        output_index: messageOutputIndex,
-                        item: {
-                            id: outputItemId,
-                            type: 'message',
-                            status: 'completed',
-                            role: 'assistant',
-                            content: [{ type: 'output_text', text: content }]
-                        }
-                    });
-                }
+                responsesStreamWriter.finishReasoning(reasoning);
+                responsesStreamWriter.finishText(content);
 
                 let polledForToolCalls = null;
                 if (externalToolRegistry.length > 0 && streamedToolCalls.length === 0) {
@@ -4005,7 +3254,7 @@ export function createTurnEngine({
                 const safeReasoning = stripFunctionCallMarkup(stripFunctionCalls(reasoning));
                 if (streamedToolCalls.length === 0) {
                     validatedStreamedToolCalls.forEach((toolCall) => {
-                        emitResponsesFunctionCall(toolCall);
+                        responsesStreamWriter.functionCall(toolCall);
                     });
                 }
                 const streamOutput = [];
@@ -4036,8 +3285,8 @@ export function createTurnEngine({
                         output_tokens_details: { reasoning_tokens: reasoningTokens }
                     }
                 };
-                emit({ type: 'response.completed', sequence_number: nextSeq(), response });
-                res.write('data: [DONE]\n\n');
+                responsesStreamWriter.complete(response);
+                responsesStreamWriter.done();
                 storeResponseState(responseId, sessionId, `${pID}/${mID}`);
                 // Only turns that went through conversation planning may be registered:
                 // a `previous_response_id` turn owns a session this map knows nothing
@@ -4192,13 +3441,7 @@ export function createTurnEngine({
             // the already-open stream instead.
             if (res.headersSent) {
                 try {
-                    res.write(
-                        `data: ${JSON.stringify({
-                            type: 'response.failed',
-                            response: { error: transformed.error }
-                        })}\n\n`
-                    );
-                    res.write('data: [DONE]\n\n');
+                    writeResponsesFailure(res, transformed.error);
                 } catch (writeError) {
                     logDebug('Failed to report error on open response stream', {
                         error: /** @type {Error} */ (writeError).message
@@ -4230,6 +3473,7 @@ export function createTurnEngine({
         /** Stops the periodic sweep this engine started. @returns {void} */
         close() {
             clearInterval(responseStateSweepTimer);
+            storageCleanup.close();
         }
     };
 }

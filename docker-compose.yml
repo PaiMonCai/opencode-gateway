@@ -38,6 +38,7 @@ services:
 
       # --- credentials (empty means "not configured") ----------------------
       API_KEY: '${API_KEY:-}'
+      OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH: '${OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH:-false}'
       OPENCODE_SERVER_PASSWORD: '${OPENCODE_SERVER_PASSWORD:-}'
       OPENCODE_ZEN_API_KEY: '${OPENCODE_ZEN_API_KEY:-}'
 

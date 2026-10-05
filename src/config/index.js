@@ -11,6 +11,7 @@
  */
 
 export { loadConfig } from './load.js';
+export { assertSafePublicExposure, isLoopbackBindHost } from './exposure.js';
 export {
     ConfigError,
     CONFIG_FIELDS,

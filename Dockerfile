@@ -57,6 +57,7 @@ RUN install -d -m 0755 \
 # docs/*/configuration.md.
 ENV OPENCODE_PROXY_PORT=10000 \
     BIND_HOST=0.0.0.0 \
+    OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=false \
     OPENCODE_PATH=opencode \
     OPENCODE_PROXY_MANAGE_BACKEND=true \
     OPENCODE_DISABLE_TOOLS=true \
