@@ -35,10 +35,22 @@
 | `OPENCODE_SERVER_URL` | `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | OpenCode 后端地址 |
 | `OPENCODE_SERVER_PASSWORD` | `OPENCODE_SERVER_PASSWORD` | (空) | 后端认证密码 |
 | `API_KEY` | `API_KEY` | (空) | 代理的 Bearer 认证密钥，未配置则不鉴权 |
+| `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH` | `ALLOW_PUBLIC_NO_AUTH` | `false` | 显式允许非 loopback 地址在无 `API_KEY` 时启动；危险，仅用于可信网络 |
 | `OPENCODE_PROXY_MANAGE_BACKEND` | `MANAGE_BACKEND` | `true` | 由代理拉起并管理 OpenCode 后端进程，后端会加载工具锁插件 |
 | `OPENCODE_PATH` | `OPENCODE_PATH` | `opencode` | OpenCode 可执行文件路径 |
 | `OPENCODE_ZEN_API_KEY` | `ZEN_API_KEY` | (空) | Zen API Key，以 `OPENCODE_API_KEY` 传给代理拉起的后端，用于付费模型 |
 | `OPENCODE_USE_ISOLATED_HOME` | `USE_ISOLATED_HOME` | `false` | 使用隔离的 OpenCode 配置目录 |
+
+#### 启动时公网暴露保护
+
+配置解析仍允许 `API_KEY` 为空，但真正启动进程前会执行额外安全检查：
+
+- 有 `API_KEY`：任何监听地址都允许；
+- 无 `API_KEY` 且绑定 `127.0.0.0/8`、`::1` 或 `localhost`：允许；
+- 无 `API_KEY` 且绑定其他地址（包括默认 `0.0.0.0`）：拒绝启动。
+
+若确实处在受信网络并明确需要无认证非 loopback 监听，可设置
+`OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=true`。这是显式风险确认，不建议公网使用。
 
 ### 工具控制
 

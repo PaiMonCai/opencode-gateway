@@ -48,6 +48,11 @@ and an oversized body `400 {"error":{"message":"Request body too large",...}}`.
 Auth failure: `401 {"error":{"message":"Invalid API key","type":"invalid_request_error","code":"invalid_api_key"}}`
 (the documented OpenAI-shaped body; the pre-rewrite code answered a bare
 `{"message":"Unauthorized"}`, and this rewrite aligns to the published contract).
+
+**Startup exposure guard**: an empty `API_KEY` is only permitted when `BIND_HOST`
+is explicitly loopback-only (`127.0.0.0/8`, `::1`, or `localhost`). A non-loopback
+listener with no key fails before the server starts unless the operator explicitly
+sets `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=true`.
 `/health/details` and `/metrics` keep their plain-text `401 Unauthorized` /
 `404 Not found` for an unauthenticated or disabled probe, exactly as today.
 

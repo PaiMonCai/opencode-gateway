@@ -45,10 +45,26 @@ regular tables above.
 | `OPENCODE_SERVER_URL` | `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | OpenCode backend address |
 | `OPENCODE_SERVER_PASSWORD` | `OPENCODE_SERVER_PASSWORD` | (empty) | Backend auth password |
 | `API_KEY` | `API_KEY` | (empty) | Proxy Bearer key, no auth when unset |
+| `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH` | `ALLOW_PUBLIC_NO_AUTH` | `false` | Explicitly allow a non-loopback listener without `API_KEY`; dangerous, trusted networks only |
 | `OPENCODE_PROXY_MANAGE_BACKEND` | `MANAGE_BACKEND` | `true` | Proxy starts and manages the OpenCode backend process, which loads the tool-lock plugin |
 | `OPENCODE_PATH` | `OPENCODE_PATH` | `opencode` | OpenCode binary path |
 | `OPENCODE_ZEN_API_KEY` | `ZEN_API_KEY` | (empty) | Zen API key, passed to the managed backend as `OPENCODE_API_KEY` for paid models |
 | `OPENCODE_USE_ISOLATED_HOME` | `USE_ISOLATED_HOME` | `false` | Use an isolated OpenCode config directory |
+
+#### Startup public-exposure guard
+
+Configuration parsing still permits an empty `API_KEY`, but the executable applies
+an additional safety check before listening:
+
+- with an `API_KEY`, any bind is allowed;
+- without an `API_KEY`, explicit loopback binds (`127.0.0.0/8`, `::1`, or
+  `localhost`) are allowed;
+- without an `API_KEY`, every other bind (including the default `0.0.0.0`) is
+  refused.
+
+For a deliberately unauthenticated trusted-network deployment, set
+`OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=true`. This is an explicit risk acknowledgement,
+not a recommended public deployment.
 
 ### Tool Control
 

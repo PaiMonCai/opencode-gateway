@@ -112,6 +112,7 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | Environment variable | Default | Description |
 |:--------|:-------|:-----|
 | `API_KEY` | (empty) | Proxy Bearer auth key |
+| `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH` | `false` | Explicitly allow a non-loopback listener with no `API_KEY`; dangerous, trusted networks only |
 | `OPENCODE_SERVER_PASSWORD` | (empty) | OpenCode backend password |
 | `OPENCODE_PROXY_PORT` / `PORT` | `10000` | Proxy port |
 | `OPENCODE_SERVER_PORT` | `10001` | Backend port (applies when `OPENCODE_SERVER_URL` is not set) |
@@ -140,11 +141,19 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 
 > 📄 Full reference: [Configuration](./docs/en/configuration.md)
 
+### Public no-auth protection
+
+The default listener is `0.0.0.0`. When `API_KEY` is empty, startup now permits only explicit loopback binds (`127.0.0.0/8`, `::1`, or `localhost`). Any other bind is rejected before listening, preventing an accidental unauthenticated LAN/public exposure.
+
+Set `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=true` only when that exposure is deliberate and trusted.
+
+
 Recommended production settings:
 
 ```env
 # Auth and backend
 API_KEY=your-secret-key
+OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=false
 OPENCODE_SERVER_PASSWORD=your-password
 
 # Upstream credential (Go / paid Zen go direct, the free tier uses the runtime)

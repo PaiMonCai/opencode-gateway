@@ -11,18 +11,19 @@
 
 import * as sdk from '@opencode-ai/sdk';
 
-import { loadConfig } from './src/config/index.js';
+import { assertSafePublicExposure, loadConfig } from './src/config/index.js';
 import { createLogger } from './src/logging/index.js';
 import { buildRuntime } from './src/bootstrap.js';
 import { createBackendManager, printBanner, startServer } from './src/server.js';
 
 const config = loadConfig({});
+assertSafePublicExposure(config);
 // `OPENCODE_PROXY_DEBUG` selects debug level *and* the human-readable format;
 // there is no separate level/format setting.
 const logger = createLogger({ debug: config.DEBUG });
 
 // Settings that no longer exist are ignored, but never silently: one line per
-    // name the operator still sets, with what to use instead.
+// name the operator still sets, with what to use instead.
 for (const removed of config.REMOVED_SETTINGS) {
     logger.warn(
         `[Proxy] Removed setting ${removed.name} (${removed.source}) is ignored — ${removed.message}`

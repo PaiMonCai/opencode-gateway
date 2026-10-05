@@ -114,6 +114,7 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | 环境变量 | 默认值 | 说明 |
 |:--------|:-------|:-----|
 | `API_KEY` | (空) | 代理的 Bearer 认证密钥 |
+| `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH` | `false` | 显式允许非 loopback 地址在无 `API_KEY` 时启动；危险，仅用于可信网络 |
 | `OPENCODE_SERVER_PASSWORD` | (空) | OpenCode 后端密码 |
 | `OPENCODE_PROXY_PORT` / `PORT` | `10000` | 代理端口 |
 | `OPENCODE_SERVER_PORT` | `10001` | 后端端口（未显式配置 `OPENCODE_SERVER_URL` 时生效） |
@@ -142,11 +143,19 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 
 > 📄 完整配置见 [配置详解](./docs/zh/configuration.md)
 
+### 公网无认证保护
+
+默认监听地址是 `0.0.0.0`。如果 `API_KEY` 为空，网关现在只允许绑定到 `127.0.0.0/8`、`::1` 或 `localhost`；其他地址会在启动阶段直接拒绝，以避免误把无认证接口暴露到公网或局域网。
+
+只有明确接受该风险时，才应设置 `OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=true` 绕过保护。
+
+
 推荐生产配置：
 
 ```env
 # 认证与后端
 API_KEY=your-secret-key
+OPENCODE_PROXY_ALLOW_PUBLIC_NO_AUTH=false
 OPENCODE_SERVER_PASSWORD=your-password
 
 # 上游凭据（Go / 付费 Zen 走直连，免费档走 runtime）

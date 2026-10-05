@@ -47,10 +47,10 @@ Rules:
 
 - a layer may only import from layers **below** it and from `src/config`,
   `src/logging`, `src/errors`;
-- `src/routes/*` contains no business logic: it parses, calls the conversation
-  layer and the upstream router, and writes the response;
-- nothing outside `src/upstreams/*` knows about the SDK or `fetch`;
-- nothing outside `src/http/*` knows about `req`/`res`.
+- thin route adapters (`chat.js`, `responses.js`, `health.js`, `models.js`) contain no business logic;
+- `routes/engine.js` remains the turn orchestrator, while low-coupling collaborators are extracted into focused modules such as `operations.js` and `model-resolver.js`;
+- nothing outside `src/upstreams/*` knows about the SDK or upstream `fetch`;
+- Express `req`/`res` may appear only in the HTTP edge and route/operational surface modules, not in conversation/upstream/tool state modules.
 
 ## 2. Modules and frozen interfaces
 
@@ -60,6 +60,7 @@ Signatures are the contract. Use JSDoc typedefs so `tsc --checkJs` validates the
 
 ```js
 loadConfig({ env = process.env, file = null } = {}) -> Config   // frozen object, validated
+assertSafePublicExposure(config)                                 // fail-fast listener exposure policy
 describeConfig(config) -> { line: string }[]                     // startup banner, secrets redacted
 ```
 
@@ -87,7 +88,8 @@ isTransientUpstreamError(error) -> boolean            // retry policy (see §4)
 
 Error codes are part of the public contract: `invalid_request_error`,
 `model_not_found`, `insufficient_quota`, `rate_limit_exceeded`, `timeout`,
-`conversation_busy`, `session_state_unavailable`, `internal_error`.
+`conversation_busy`, `gateway_overloaded`, `session_state_unavailable`,
+`internal_error`.
 
 ### src/conversation
 
@@ -203,13 +205,39 @@ the execution-time plugin enforces the policy carried in the session title.
 
 ```js
 createApp({ config, logger, registry, router, tools }) -> express.Application
+
+createModelResolver({ runtime, direct, logDebug }) -> {
+  listModels(),
+  resolveRequestedModel(model)
+}
+
+createOperationalSurface({
+  config, capacityLimiter, allowedToolNames, discoveryFixture,
+  internalToolMetrics, getToolCacheSnapshot
+}) -> {
+  handleHealth, handleHealthDetails, handleMetrics,
+  getInternalToolDashboard, renderMetrics
+}
 ```
 
 Routes: `GET /health`, `GET /health/details`, `GET /metrics`,
 `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/responses`.
 
+Current modularization boundary:
+
+- `engine.js`: Chat/Responses turn orchestration, retry/reconciliation and session state transitions;
+- `streaming/sse.js`: shared SSE framing plus direct-upstream stream relay;
+- `streaming/chat-writer.js`: Chat Completions chunk rendering;
+- `streaming/responses-writer.js`: Responses sequence numbers, output scaffolds and event rendering;
+- `operations.js`: liveness, authenticated diagnostics and Prometheus rendering;
+- `model-resolver.js`: runtime/direct catalog selection and client model-name resolution;
+- `direct-turn.js`: one direct upstream attempt, fallback classification and downstream relay;
+- `conversation/response-chains.js`: `previous_response_id` state;
+- `conversation/storage-cleanup.js`: OpenCode storage sweeping and timer lifecycle;
+- `concurrency/turn-limiter.js`: bounded process-wide turn capacity.
+
 The HTTP contract — endpoints, request fields, response shapes, error codes —
-is exactly what `docs/{zh,en}/api-reference.md` documents. The rewrite must not
+is exactly what `docs/{zh,en}/api-reference.md` documents. Refactors must not
 change it.
 
 ## 3. Cross-cutting requirements
