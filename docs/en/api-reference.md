@@ -199,13 +199,21 @@ The middleware's own errors look like `{"error": {"message": ..., "type": ..., "
 > Different conversations may run concurrently. A waiter that exceeds the
 > conversation-lock budget receives `503 conversation_busy`.
 
-Two conversation-related reasons:
+Three common reasons:
 
 ```json
 { "error": { "message": "Conversation is busy with another request", "type": "conversation_busy" } }
 ```
 
 Another request is already using this conversation and this one waited longer than the request timeout plus 60 seconds — so a wedged turn cannot pin a conversation forever.
+
+Different conversations may execute concurrently, but process-wide turn capacity is bounded. A full pending queue or a wait beyond `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` returns:
+
+```json
+{ "error": { "message": "Gateway is at capacity; retry shortly", "type": "gateway_overloaded" } }
+```
+
+The response includes `Retry-After`; defaults are 20 executing turns, 100 pending turns, and a 2-second wait.
 
 ```json
 { "error": { "message": "Could not read the session state for this conversation; retry the request", "type": "session_state_unavailable" } }

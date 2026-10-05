@@ -7,7 +7,7 @@
 ### 变量分三档
 
 - **核心（必须知道）**：`API_KEY`、`OPENCODE_SERVER_PASSWORD`（这两个建议都设）；`OPENCODE_ZEN_API_KEY`（要用 Go 订阅 / 付费 Zen 才需要）；`OPENCODE_PROXY_PORT`；`PUID`/`PGID`（NAS 权限）。
-- **常用**：`OPENCODE_PROXY_OPS`、`OPENCODE_PROXY_STORAGE_CLEANUP`、`OPENCODE_DISABLE_TOOLS`、`OPENCODE_INTERNAL_ALLOWED_TOOLS`、`OPENCODE_PROXY_SESSION_DERIVE`、`OPENCODE_PROXY_REQUEST_TIMEOUT_MS`、`OPENCODE_PROXY_UPSTREAM_PROXY`、`OPENCODE_PROXY_DEBUG`。
+- **常用**：`OPENCODE_PROXY_OPS`、`OPENCODE_PROXY_STORAGE_CLEANUP`、`OPENCODE_DISABLE_TOOLS`、`OPENCODE_INTERNAL_ALLOWED_TOOLS`、`OPENCODE_PROXY_SESSION_DERIVE`、`OPENCODE_PROXY_REQUEST_TIMEOUT_MS`、`OPENCODE_PROXY_MAX_CONCURRENT_TURNS`、`OPENCODE_PROXY_UPSTREAM_PROXY`、`OPENCODE_PROXY_DEBUG`。
 - **高级**：表里其余项（上游 URL、事件超时、重试、提示词模式、会话头名单等），默认值已按免费档调好，通常不需要碰。
 
 ### 已收敛 / 已废弃的变量
@@ -57,6 +57,9 @@
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `OMIT_SYSTEM_PROMPT` | `false` | 忽略传入的 system prompt |
 | `OPENCODE_PROXY_STORAGE_CLEANUP` | `STORAGE_CLEANUP` | `off` | 会话存储清理：`off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_REQUEST_TIMEOUT_MS` | `REQUEST_TIMEOUT_MS` | `180000` | 请求超时（毫秒） |
+| `OPENCODE_PROXY_MAX_CONCURRENT_TURNS` | `MAX_CONCURRENT_TURNS` | `20` | 进程内同时执行的 turn 上限 |
+| `OPENCODE_PROXY_MAX_PENDING_TURNS` | `MAX_PENDING_TURNS` | `100` | 等待全局容量的最大 turn 数，超过后立即 503 |
+| `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` | `CONCURRENCY_WAIT_MS` | `2000` | 等待全局容量的最长时间；`0` 表示不排队，超时返回 `503 gateway_overloaded` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `SESSION_REUSE_ENABLED` | `true` | 客户端带会话标识头时复用同一后端会话 |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `SESSION_TTL_MS` | `1800000` | 会话空闲多久后关闭（毫秒） |
 | `OPENCODE_PROXY_SESSION_HEADERS` | `SESSION_HEADER_NAMES` | (见下) | 识别会话身份的请求头，逗号分隔，按顺序取第一个非空值 |
@@ -99,7 +102,7 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 
 > 不带任何会话头的客户端行为完全不变（每请求一个会话）。需要关闭时可设 `OPENCODE_PROXY_SESSION_REUSE=false`。
 
-**错误码**：复用会话时如果读不到会话状态（无法区分上一轮与本轮的回答），请求会以 `503 session_state_unavailable` 失败而不是返回陈旧内容；同一会话已有请求在处理时，并发请求会拿到 `503 conversation_busy`（等待上限为请求超时 + 60 秒）。
+**错误码**：复用会话时如果读不到会话状态（无法区分上一轮与本轮的回答），请求会以 `503 session_state_unavailable` 失败而不是返回陈旧内容；同一会话已有请求在处理时，并发请求会拿到 `503 conversation_busy`（等待上限为请求超时 + 60 秒）。不同会话可以并行，但整个进程最多同时执行 `MAX_CONCURRENT_TURNS` 个 turn；超过后进入最多 `MAX_PENDING_TURNS` 的 FIFO 队列，队列满或等待超过 `CONCURRENCY_WAIT_MS` 时返回 `503 gateway_overloaded`。
 
 ### 双上游：直连与 runtime
 
@@ -182,6 +185,9 @@ ALL_PROXY=socks5h://10.0.0.9:1080
     "OMIT_SYSTEM_PROMPT": false,
     "STORAGE_CLEANUP": "off",
     "REQUEST_TIMEOUT_MS": 180000,
+    "MAX_CONCURRENT_TURNS": 20,
+    "MAX_PENDING_TURNS": 100,
+    "CONCURRENCY_WAIT_MS": 2000,
     "DEBUG": false,
     "OPENCODE_SERVER_URL": "http://127.0.0.1:10001",
     "OPENCODE_PATH": "opencode"
@@ -233,6 +239,16 @@ OpenCode Zen 免费模型只接受工具列表与官方客户端一致的请求�
 {
   "status": "ok",
   "proxy": true,
+  "concurrency": {
+    "active": 2,
+    "pending": 1,
+    "maxConcurrent": 20,
+    "maxPending": 100,
+    "waitTimeoutMs": 2000,
+    "rejectedTotal": 0,
+    "timedOutTotal": 0,
+    "abortedTotal": 0
+  },
   "internal_tools": {
     "config": {
       "allowed_tools": ["web_fetch"],
@@ -264,6 +280,13 @@ opencode_internal_tool_mode_requests_total{mode="disabled"}
 opencode_internal_tool_discovery_failures_total
 opencode_internal_tool_fallback_disabled_total
 opencode_internal_tool_cache_ids
+opencode_gateway_turns_active
+opencode_gateway_turns_pending
+opencode_gateway_turn_limit
+opencode_gateway_turn_pending_limit
+opencode_gateway_turn_rejections_total
+opencode_gateway_turn_wait_timeouts_total
+opencode_gateway_turn_aborts_total
 ```
 
 ## 🎯 Prompt Mode
@@ -285,6 +308,9 @@ OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
 OPENCODE_PROXY_STORAGE_CLEANUP=daily
+OPENCODE_PROXY_MAX_CONCURRENT_TURNS=20
+OPENCODE_PROXY_MAX_PENDING_TURNS=100
+OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 ```
 
 ### 本地开发

@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isTransientUpstreamError } from '../errors/index.js';
+import { createTurnLimiter } from '../concurrency/turn-limiter.js';
 import { createResponseChainIndex } from '../conversation/response-chains.js';
 import {
     conversationScopeFor as scopedConversationKey,
@@ -556,6 +557,7 @@ function normalizeToolName(name) {
  * @param {any} options.router Upstream router (`createUpstreamRouter`).
  * @param {any} [options.tools] Tool contract module, injectable for tests.
  * @param {any} [options.responseChains] `previous_response_id` chain index.
+ * @param {any} [options.turnLimiter] Process-wide bounded turn limiter, injectable for tests.
  * @param {() => Promise<void>} [options.ensureBackend] Starts/awaits the managed backend.
  * @returns {object} Engine with the two handlers and the ops surfaces.
  */
@@ -566,6 +568,7 @@ export function createTurnEngine({
     router,
     tools: _tools = null,
     responseChains = createResponseChainIndex(),
+    turnLimiter = null,
     ensureBackend = async () => {}
 }) {
     if (!registry || typeof registry.resolveTurn !== 'function') {
@@ -703,6 +706,33 @@ export function createTurnEngine({
         error: { message: 'Conversation is busy with another request', type: 'conversation_busy' }
     });
 
+    /** 503 body for process-wide capacity exhaustion. */
+    const gatewayOverloadedBody = () => ({
+        error: { message: 'Gateway is at capacity; retry shortly', type: 'gateway_overloaded' }
+    });
+
+    /**
+     * Acquire one process-wide turn slot after the conversation lock is held.
+     *
+     * Taking locks in that order keeps duplicate requests for one conversation
+     * from occupying multiple global permits while they wait on each other.
+     *
+     * @param {import('express').Response} res Response to write on overload.
+     * @param {AbortSignal} signal Client-disconnect signal.
+     * @returns {Promise<(() => void)|null>} Permit release function, or null.
+     */
+    const acquireTurnCapacity = async (res, signal) => {
+        const release = await capacityLimiter.acquire({ signal });
+        if (release) return release;
+        if (signal.aborted || res.headersSent || res.writableEnded) return null;
+
+        const snapshot = capacityLimiter.snapshot();
+        logWarn('[Proxy] Gateway turn capacity exhausted', snapshot);
+        res.setHeader('Retry-After', String(Math.max(1, Math.ceil(CONCURRENCY_WAIT_MS / 1000))));
+        res.status(503).json(gatewayOverloadedBody());
+        return null;
+    };
+
     /** 503 body for a reused session whose baseline snapshot failed. */
     const sessionStateUnavailableBody = () => ({
         error: {
@@ -816,6 +846,9 @@ export function createTurnEngine({
         API_KEY,
         OPENCODE_SERVER_URL,
         REQUEST_TIMEOUT_MS,
+        MAX_CONCURRENT_TURNS = 20,
+        MAX_PENDING_TURNS = 100,
+        CONCURRENCY_WAIT_MS = 2000,
         DEBUG,
         DISABLE_TOOLS,
         INTERNAL_WEB_FETCH_ENABLED,
@@ -835,6 +868,14 @@ export function createTurnEngine({
         EVENT_IDLE_TIMEOUT_MS = DEFAULT_EVENT_IDLE_TIMEOUT_MS,
         EVENT_FIRST_DELTA_TIMEOUT_MS = DEFAULT_EVENT_FIRST_DELTA_TIMEOUT_MS
     } = config;
+
+    const capacityLimiter =
+        turnLimiter ||
+        createTurnLimiter({
+            maxConcurrent: MAX_CONCURRENT_TURNS,
+            maxPending: MAX_PENDING_TURNS,
+            waitTimeoutMs: CONCURRENCY_WAIT_MS
+        });
 
     const TOOL_MODE = Object.freeze({
         DISABLED: 'disabled',
@@ -1790,6 +1831,8 @@ export function createTurnEngine({
             let turnBaseline = null;
             /** @type {(() => void)|null} */
             let releaseConversationLock = null;
+            /** @type {(() => void)|null} */
+            let releaseTurnCapacity = null;
             // Aborted when the client disconnects, so the turn ends (and its
             // conversation lock is released) instead of running to the timeout.
             const turnAbort = new AbortController();
@@ -2089,6 +2132,9 @@ export function createTurnEngine({
                     res.status(503).json(conversationBusyBody());
                     return;
                 }
+
+                releaseTurnCapacity = await acquireTurnCapacity(res, turnAbort.signal);
+                if (!releaseTurnCapacity) return;
 
                 if (servingMode === 'direct') {
                     const sessionId =
@@ -2879,6 +2925,7 @@ export function createTurnEngine({
                 await discardTurnState(conversationKey, sessionId);
             } finally {
                 if (typeof releaseConversationLock === 'function') releaseConversationLock();
+                if (typeof releaseTurnCapacity === 'function') releaseTurnCapacity();
                 if (typeof keepaliveInterval !== 'undefined' && keepaliveInterval)
                     clearInterval(keepaliveInterval);
                 if (eventStream && eventStream.close) {
@@ -2952,6 +2999,7 @@ export function createTurnEngine({
         res.json({
             status: 'ok',
             proxy: true,
+            concurrency: capacityLimiter.snapshot(),
             internal_tools: {
                 config: {
                     allowed_tools: SERVER_INTERNAL_ALLOWED_TOOL_NAMES,
@@ -2976,6 +3024,34 @@ export function createTurnEngine({
                 }
             }
         });
+    };
+
+    /** @returns {string[]} Prometheus lines for global turn capacity. */
+    const concurrencyMetricLines = () => {
+        const snapshot = capacityLimiter.snapshot();
+        return [
+            '# HELP opencode_gateway_turns_active Turns currently holding global capacity.',
+            '# TYPE opencode_gateway_turns_active gauge',
+            `opencode_gateway_turns_active ${snapshot.active}`,
+            '# HELP opencode_gateway_turns_pending Turns waiting for global capacity.',
+            '# TYPE opencode_gateway_turns_pending gauge',
+            `opencode_gateway_turns_pending ${snapshot.pending}`,
+            '# HELP opencode_gateway_turn_limit Configured global turn concurrency limit.',
+            '# TYPE opencode_gateway_turn_limit gauge',
+            `opencode_gateway_turn_limit ${snapshot.maxConcurrent}`,
+            '# HELP opencode_gateway_turn_pending_limit Configured global pending-turn limit.',
+            '# TYPE opencode_gateway_turn_pending_limit gauge',
+            `opencode_gateway_turn_pending_limit ${snapshot.maxPending}`,
+            '# HELP opencode_gateway_turn_rejections_total Turns rejected because the pending queue was full or fail-fast mode was enabled.',
+            '# TYPE opencode_gateway_turn_rejections_total counter',
+            `opencode_gateway_turn_rejections_total ${snapshot.rejectedTotal}`,
+            '# HELP opencode_gateway_turn_wait_timeouts_total Turns rejected after waiting too long for capacity.',
+            '# TYPE opencode_gateway_turn_wait_timeouts_total counter',
+            `opencode_gateway_turn_wait_timeouts_total ${snapshot.timedOutTotal}`,
+            '# HELP opencode_gateway_turn_aborts_total Queued turns removed because the client disconnected.',
+            '# TYPE opencode_gateway_turn_aborts_total counter',
+            `opencode_gateway_turn_aborts_total ${snapshot.abortedTotal}`
+        ];
     };
 
     /**
@@ -3009,7 +3085,8 @@ export function createTurnEngine({
             `opencode_internal_tool_fallback_disabled_total ${internalToolMetrics.fallbackToDisabled}`,
             '# HELP opencode_internal_tool_cache_ids Number of cached backend tool IDs.',
             '# TYPE opencode_internal_tool_cache_ids gauge',
-            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`
+            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`,
+            ...concurrencyMetricLines()
         ];
 
         res.setHeader('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
@@ -3020,6 +3097,7 @@ export function createTurnEngine({
     const getInternalToolDashboard = () => ({
         status: 'ok',
         proxy: true,
+        concurrency: capacityLimiter.snapshot(),
         internal_tools: {
             config: {
                 allowed_tools: SERVER_INTERNAL_ALLOWED_TOOL_NAMES,
@@ -3061,7 +3139,8 @@ export function createTurnEngine({
             `opencode_internal_tool_fallback_disabled_total ${internalToolMetrics.fallbackToDisabled}`,
             '# HELP opencode_internal_tool_cache_ids Number of cached backend tool IDs.',
             '# TYPE opencode_internal_tool_cache_ids gauge',
-            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`
+            `opencode_internal_tool_cache_ids ${cachedToolIds ? cachedToolIds.length : 0}`,
+            ...concurrencyMetricLines()
         ];
         return `${metricsLines.join('\n')}\n`;
     };
@@ -3081,6 +3160,8 @@ export function createTurnEngine({
         let turnBaseline = null;
         /** @type {(() => void)|null} */
         let releaseConversationLock = null;
+        /** @type {(() => void)|null} */
+        let releaseTurnCapacity = null;
         // Aborted when the client disconnects, so a streaming turn does not hold
         // its conversation lock until the idle or request timeout fires.
         const turnAbort = new AbortController();
@@ -3338,6 +3419,8 @@ export function createTurnEngine({
                 if (resolvedDirectTurn.busy) {
                     return res.status(503).json(conversationBusyBody());
                 }
+                releaseTurnCapacity = await acquireTurnCapacity(res, turnAbort.signal);
+                if (!releaseTurnCapacity) return;
                 const sessionId =
                     resolvedDirectTurn.entry?.mode === 'direct' && resolvedDirectTurn.entry.sessionId
                         ? resolvedDirectTurn.entry.sessionId
@@ -3411,6 +3494,10 @@ export function createTurnEngine({
             releaseConversationLock = resolvedTurn.release;
             if (resolvedTurn.busy) {
                 return res.status(503).json(conversationBusyBody());
+            }
+            if (!releaseTurnCapacity) {
+                releaseTurnCapacity = await acquireTurnCapacity(res, turnAbort.signal);
+                if (!releaseTurnCapacity) return;
             }
             turnPlan = resolvedTurn.plan;
             const derivedIdentity =
@@ -4122,6 +4209,7 @@ export function createTurnEngine({
             return res.status(transformed.statusCode).json({ error: transformed.error });
         } finally {
             if (typeof releaseConversationLock === 'function') releaseConversationLock();
+            if (typeof releaseTurnCapacity === 'function') releaseTurnCapacity();
         }
     };
 

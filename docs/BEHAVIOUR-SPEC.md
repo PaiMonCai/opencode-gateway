@@ -32,6 +32,14 @@ conversation keys may run concurrently; a waiter that cannot acquire its
 conversation lock within the configured wait budget receives
 `503 conversation_busy`.
 
+**Global turn capacity**: after acquiring a conversation lock, a request must
+also acquire one process-wide turn permit. By default at most 20 turns execute,
+100 wait FIFO, and a waiter may remain queued for 2000ms. A full queue or expired
+wait returns `503 gateway_overloaded` with `Retry-After`. Client disconnects
+remove queued waiters immediately. The order is deliberately conversation lock →
+global capacity so duplicate turns from one conversation cannot consume multiple
+global permits while waiting on each other.
+
 | any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
 
 Malformed JSON bodies answer `400 {"error":{"message":"Invalid JSON in request body",...}}`
@@ -257,6 +265,7 @@ Our own shape: `{"error":{"message":...,"type":...,"code":...}}`.
 | 500 | `server_error` / `internal_error` | unexpected failure of ours (the documented api-reference body) |
 | 502 | `OpenCodeError`/`APIError` | runtime turn failed with no content |
 | 503 | `conversation_busy` | conversation lock wait exceeded (request timeout + 60s) |
+| 503 | `gateway_overloaded` | global turn queue full or capacity wait exceeded |
 | 503 | `session_state_unavailable` | baseline snapshot failed on a reused session |
 | 504 | `timeout` | no completion within `REQUEST_TIMEOUT_MS` |
 
@@ -275,16 +284,21 @@ web_fetch, internal allowed tools, internal tool metrics, discovery fixture,
 health details enabled/require auth, metrics enabled/require auth, use isolated
 home, session reuse (`ttl ...s, headers: ...`), session identity derivation,
 direct upstream (`go: ..., zen: ...`), free-tier/fallback switches, request
-timeout, prompt mode, omit system prompt, auto cleanup, cleanup interval/max age,
-event idle/first-delta timeouts, debug.
+timeout, global turn concurrency/pending/wait limits, prompt mode, omit system
+prompt, auto cleanup, cleanup interval/max age, event idle/first-delta timeouts,
+debug.
 
-`/health/details` → `{"status","proxy","internal_tools":{"config":{"allowed_tools","metrics_enabled","discovery_fixture"},"metrics":{"externalBridgeRequests","internalAllowlistRequests","disabledRequests","discoveryFailures","fallbackToDisabled"},"cache":{"tool_ids_cached","tool_id_count","age_ms"},"audit":{"available","fields":[...]}}}`.
+`/health/details` → `{"status","proxy","concurrency":{"active","pending","maxConcurrent","maxPending","waitTimeoutMs","rejectedTotal","timedOutTotal","abortedTotal"},"internal_tools":{"config":{"allowed_tools","metrics_enabled","discovery_fixture"},"metrics":{"externalBridgeRequests","internalAllowlistRequests","disabledRequests","discoveryFailures","fallbackToDisabled"},"cache":{"tool_ids_cached","tool_id_count","age_ms"},"audit":{"available","fields":[...]}}}`.
 
 `/metrics` (Prometheus text):
 `opencode_internal_tool_mode_requests_total{mode="external_bridge"|"internal_allowlist"|"disabled"}`,
 `opencode_internal_tool_discovery_failures_total`,
 `opencode_internal_tool_fallback_disabled_total`,
-`opencode_internal_tool_cache_ids`.
+`opencode_internal_tool_cache_ids`,
+`opencode_gateway_turns_active`, `opencode_gateway_turns_pending`,
+`opencode_gateway_turn_limit`, `opencode_gateway_turn_pending_limit`,
+`opencode_gateway_turn_rejections_total`, `opencode_gateway_turn_wait_timeouts_total`,
+`opencode_gateway_turn_aborts_total`.
 
 Graceful shutdown on SIGINT/SIGTERM: stop accepting connections, kill a managed
 backend, remove temporary jail directories.

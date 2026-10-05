@@ -525,6 +525,38 @@ const FIELDS = [
         banner: (value) => `  - Request Timeout: ${value}ms`
     },
     {
+        key: 'MAX_CONCURRENT_TURNS',
+        env: ['OPENCODE_PROXY_MAX_CONCURRENT_TURNS'],
+        fileKey: 'MAX_CONCURRENT_TURNS',
+        type: 'integer',
+        min: 1,
+        max: 10000,
+        default: 20,
+        description: 'Maximum number of turns allowed to execute concurrently',
+        banner: (value) => `  - Max Concurrent Turns: ${value}`
+    },
+    {
+        key: 'MAX_PENDING_TURNS',
+        env: ['OPENCODE_PROXY_MAX_PENDING_TURNS'],
+        fileKey: 'MAX_PENDING_TURNS',
+        type: 'integer',
+        min: 0,
+        max: 100000,
+        default: 100,
+        description: 'Maximum number of turns allowed to wait for global capacity',
+        banner: (value) => `  - Max Pending Turns: ${value}`
+    },
+    {
+        key: 'CONCURRENCY_WAIT_MS',
+        env: ['OPENCODE_PROXY_CONCURRENCY_WAIT_MS'],
+        fileKey: 'CONCURRENCY_WAIT_MS',
+        type: 'integer',
+        min: 0,
+        default: 2000,
+        description: 'Maximum wait for global turn capacity; zero fails fast',
+        banner: (value) => `  - Concurrency Wait: ${value}ms`
+    },
+    {
         key: 'EVENT_IDLE_TIMEOUT_MS',
         env: ['OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS'],
         fileKey: 'EVENT_IDLE_TIMEOUT_MS',
@@ -796,6 +828,9 @@ const REMOVED_FILE_KEY_NOTES = Object.freeze(
  * @property {number} CLEANUP_INTERVAL_MS
  * @property {number} CLEANUP_MAX_AGE_MS
  * @property {number} REQUEST_TIMEOUT_MS
+ * @property {number} MAX_CONCURRENT_TURNS
+ * @property {number} MAX_PENDING_TURNS
+ * @property {number} CONCURRENCY_WAIT_MS
  * @property {number} EVENT_IDLE_TIMEOUT_MS
  * @property {number} EVENT_FIRST_DELTA_TIMEOUT_MS
  * @property {boolean} SESSION_REUSE_ENABLED

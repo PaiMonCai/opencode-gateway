@@ -123,6 +123,9 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` or `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `false` | Ignore the incoming system prompt |
 | `OPENCODE_PROXY_STORAGE_CLEANUP` | `off` | Conversation storage cleanup schedule: `off` / `hourly` / `daily` |
+| `OPENCODE_PROXY_MAX_CONCURRENT_TURNS` | `20` | Process-wide maximum executing turns |
+| `OPENCODE_PROXY_MAX_PENDING_TURNS` | `100` | Maximum turns waiting for global capacity |
+| `OPENCODE_PROXY_CONCURRENCY_WAIT_MS` | `2000` | Maximum capacity wait; timeout returns `503 gateway_overloaded` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `true` | Reuse one backend session per client conversation header |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `1800000` | Close an idle conversation after this long (ms) |
 | `OPENCODE_PROXY_SESSION_HEADERS` | (see docs) | Conversation identity headers, comma-separated |
@@ -150,6 +153,11 @@ OPENCODE_ZEN_API_KEY=your-opencode-key
 # Conversations: explicit headers when your gateway forwards them, derivation otherwise
 OPENCODE_PROXY_SESSION_REUSE=true
 OPENCODE_PROXY_SESSION_DERIVE=true
+
+# Backpressure
+OPENCODE_PROXY_MAX_CONCURRENT_TURNS=20
+OPENCODE_PROXY_MAX_PENDING_TURNS=100
+OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 
 # Tools and prompts
 OPENCODE_DISABLE_TOOLS=true
