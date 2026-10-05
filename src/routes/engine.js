@@ -4,7 +4,7 @@
  * The engine owns everything a turn needs after the HTTP edge has parsed the
  * request: model resolution, the text-contract tool bridge, prompt assembly, the
  * runtime/direct upstream turn, retries, usage estimates, the `previous_response_id`
- * chain and the streaming writers for both API shapes.
+ * continuation flow and the streaming writers for both API shapes.
  *
  * `src/routes/{chat,responses,health,models}.js` are the route surfaces: they
  * parse, call an engine method and write the response. `src/app.js` installs the
@@ -23,6 +23,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { isTransientUpstreamError } from '../errors/index.js';
+import { createResponseChainIndex } from '../conversation/response-chains.js';
 import {
     conversationScopeFor as scopedConversationKey,
     deliverableMessages as deliverableConversationMessages,
@@ -180,16 +181,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * @property {ToolCall[]} [tool_calls] Calls the assistant asked for.
  * @property {string} [reasoning_content] Reasoning text some upstreams echo back.
  * @property {boolean} [isToolCalls] Internal marker: the content is a replayed tool call.
- */
-
-/**
- * One waiter of the {@link lock} mutex.
- *
- * @typedef {object} QueueEntry
- * @property {() => unknown} task Work to run while holding the lock.
- * @property {number} [timeout] Maximum run time in milliseconds.
- * @property {(value: unknown) => void} resolve Settles the waiter.
- * @property {(reason?: unknown) => void} reject Fails the waiter.
  */
 
 /**
@@ -488,11 +479,6 @@ async function getImageDataUri(url) {
     });
 }
 
-// --- Mutex Logic with Timeout ---
-/** @type {QueueEntry[]} */
-const queue = [];
-let isProcessing = false;
-
 const DEFAULT_POLL_INTERVAL_MS = 500;
 // Backoff base for transient upstream error retries (issue #5): 800ms, 1600ms.
 const RETRY_BACKOFF_BASE_MS = 800;
@@ -555,54 +541,6 @@ function normalizeToolName(name) {
     return String(name || '')
         .toLowerCase()
         .replace(/[^a-z0-9./]/g, '');
-}
-
-function processQueue() {
-    if (isProcessing || queue.length === 0) return;
-    isProcessing = true;
-    const { task, timeout, resolve, reject } = /** @type {QueueEntry} */ (queue.shift());
-    let settled = false;
-    const timeoutMs = timeout || 120000;
-    const timeoutId = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(new Error(`Request timeout after ${timeoutMs}ms`));
-    }, timeoutMs);
-
-    Promise.resolve()
-        .then(() => task())
-        .then((result) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutId);
-            resolve(result);
-        })
-        .catch((err) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutId);
-            reject(err);
-        })
-        .finally(() => {
-            isProcessing = false;
-            if (queue.length > 0) {
-                queueMicrotask(processQueue);
-            }
-        });
-}
-
-/**
- * Run `task` under the shared mutex, one turn at a time.
- *
- * @param {() => unknown} task Work to run while holding the lock.
- * @param {number} [timeout] Maximum run time in milliseconds.
- * @returns {Promise<unknown>} The task's result.
- */
-function lock(task, timeout = 120000) {
-    return new Promise((resolve, reject) => {
-        queue.push({ task, timeout, resolve, reject });
-        processQueue();
-    });
 }
 
 /**
@@ -1843,892 +1781,584 @@ export function createTurnEngine({
      */
     const handleChat = async (req, res) => {
         try {
-            await lock(async () => {
-                /** @type {string|null} */
-                let sessionId = null;
-                /** @type {string|null} */
-                let conversationKey = null;
-                let turnPlan;
-                /** @type {import('../conversation/baseline.js').SessionBaseline|null} */
-                let turnBaseline = null;
-                /** @type {(() => void)|null} */
-                let releaseConversationLock = null;
-                // Aborted when the client disconnects, so the turn ends (and its
-                // conversation lock is released) instead of running to the timeout.
-                const turnAbort = new AbortController();
-                res.on('close', () => {
-                    if (!res.writableEnded) turnAbort.abort();
+            /** @type {string|null} */
+            let sessionId = null;
+            /** @type {string|null} */
+            let conversationKey = null;
+            let turnPlan;
+            /** @type {import('../conversation/baseline.js').SessionBaseline|null} */
+            let turnBaseline = null;
+            /** @type {(() => void)|null} */
+            let releaseConversationLock = null;
+            // Aborted when the client disconnects, so the turn ends (and its
+            // conversation lock is released) instead of running to the timeout.
+            const turnAbort = new AbortController();
+            res.on('close', () => {
+                if (!res.writableEnded) turnAbort.abort();
+            });
+            /** @type {{close: () => void}|null} */
+            const eventStream = /** @type {{close: () => void}|null} */ (null);
+            let stream;
+            let pID = 'opencode';
+            let mID = 'kimi-k2.5-free';
+            let id = `chatcmpl-${crypto.randomUUID()}`;
+            /** @type {ReturnType<typeof setInterval>|null} */
+            let keepaliveInterval = null;
+
+            try {
+                const {
+                    messages,
+                    model,
+                    tools = [],
+                    tool_choice,
+                    stream: requestStream,
+                    temperature,
+                    max_tokens,
+                    top_p,
+                    frequency_penalty,
+                    presence_penalty,
+                    stop,
+                    reasoning_effort,
+                    reasoning,
+                    opencode: requestOpencodeConfig
+                } = req.body;
+                stream = Boolean(requestStream);
+                if (!messages || !Array.isArray(messages) || messages.length === 0) {
+                    res.status(400).json({ error: { message: 'messages array is required' } });
+                    return;
+                }
+
+                const reasoningLevel = normalizeReasoningEffort(reasoning_effort || reasoning?.effort, null);
+
+                const requestParams = {
+                    temperature: typeof temperature === 'number' ? temperature : 0.7,
+                    max_tokens: typeof max_tokens === 'number' ? max_tokens : null,
+                    top_p: typeof top_p === 'number' ? top_p : 1.0,
+                    frequency_penalty: typeof frequency_penalty === 'number' ? frequency_penalty : 0,
+                    presence_penalty: typeof presence_penalty === 'number' ? presence_penalty : 0,
+                    stop: Array.isArray(stop) ? stop : stop ? [stop] : null,
+                    reasoning_effort: reasoningLevel
+                };
+
+                logDebug('Request params', {
+                    temperature: requestParams.temperature,
+                    max_tokens: requestParams.max_tokens,
+                    top_p: requestParams.top_p,
+                    reasoning_effort: reasoningLevel
                 });
-                /** @type {{close: () => void}|null} */
-                const eventStream = /** @type {{close: () => void}|null} */ (null);
-                let stream;
-                let pID = 'opencode';
-                let mID = 'kimi-k2.5-free';
-                let id = `chatcmpl-${crypto.randomUUID()}`;
-                /** @type {ReturnType<typeof setInterval>|null} */
-                let keepaliveInterval = null;
 
-                try {
-                    const {
-                        messages,
-                        model,
-                        tools = [],
-                        tool_choice,
-                        stream: requestStream,
-                        temperature,
-                        max_tokens,
-                        top_p,
-                        frequency_penalty,
-                        presence_penalty,
-                        stop,
-                        reasoning_effort,
-                        reasoning,
-                        opencode: requestOpencodeConfig
-                    } = req.body;
-                    stream = Boolean(requestStream);
-                    if (!messages || !Array.isArray(messages) || messages.length === 0) {
-                        return res.status(400).json({ error: { message: 'messages array is required' } });
-                    }
+                const resolvedModel = await resolveRequestedModel(model);
+                pID = resolvedModel.providerID;
+                mID = resolvedModel.modelID;
+                if (resolvedModel.aliasFrom) {
+                    logDebug('Resolved model alias', {
+                        from: resolvedModel.aliasFrom,
+                        to: resolvedModel.resolved
+                    });
+                }
 
-                    const reasoningLevel = normalizeReasoningEffort(
-                        reasoning_effort || reasoning?.effort,
-                        null
-                    );
+                /**
+                 * @param {unknown} content Message content.
+                 * @returns {string} Text content.
+                 */
+                const normalizeMessageContent = (content) => normalizeTextContent(content);
 
-                    const requestParams = {
-                        temperature: typeof temperature === 'number' ? temperature : 0.7,
-                        max_tokens: typeof max_tokens === 'number' ? max_tokens : null,
-                        top_p: typeof top_p === 'number' ? top_p : 1.0,
-                        frequency_penalty: typeof frequency_penalty === 'number' ? frequency_penalty : 0,
-                        presence_penalty: typeof presence_penalty === 'number' ? presence_penalty : 0,
-                        stop: Array.isArray(stop) ? stop : stop ? [stop] : null,
-                        reasoning_effort: reasoningLevel
+                /**
+                 * Render the client transcript into the prompt parts, the system
+                 * prompt and the text history the conversation registry digests.
+                 *
+                 * @param {ChatMessage[]} rawMessages Full client history, in order.
+                 * @param {import('../tools/registry.js').ExternalTool[]} [externalToolRegistry]
+                 *   Registry of this request.
+                 * @param {{toolCallMap?: Map<string|undefined, string|undefined>, includeFromIndex?: number}} [options]
+                 *   Build options.
+                 * @returns {Promise<PromptParts>} Parts plus the text renderings.
+                 */
+                const buildPromptParts = async (rawMessages, externalToolRegistry = [], options = {}) => {
+                    /** @type {Array<Record<string, unknown>>} */
+                    const parts = [];
+                    /** @type {string[]} */
+                    const systemChunks = [];
+                    /** @type {string[]} */
+                    const userContents = [];
+                    /** @type {Map<string|undefined, string|undefined>} */
+                    const assistantToolCalls = options.toolCallMap || new Map();
+                    // A reused session already holds the earlier turns, so only the
+                    // messages appended since the last request are delivered as parts.
+                    // Everything is still walked: the system prompt is rebuilt from the
+                    // full history and tool-call ids must resolve for older messages too,
+                    // otherwise a tool result in the new turn loses its name.
+                    const includeFromIndex =
+                        Number.isInteger(options.includeFromIndex) &&
+                        /** @type {number} */ (options.includeFromIndex) > 0
+                            ? /** @type {number} */ (options.includeFromIndex)
+                            : 0;
+                    let deliveredCount = -1;
+                    // Token accounting stays conversation-wide: on a reused session the
+                    // earlier turns are part of the prompt the model sees even though
+                    // they are not re-sent.
+                    /** @type {string[]} */
+                    const historyTexts = [];
+                    /**
+                     * @param {string} role Message role.
+                     * @param {string|undefined} name Author name, when the client set one.
+                     * @param {string} text Rendered text.
+                     * @returns {string} `ROLE(name): text` line.
+                     */
+                    const formatRoleLine = (role, name, text) => {
+                        const roleLabel = role.toUpperCase();
+                        const nameSuffix = name ? `(${name})` : '';
+                        return `${roleLabel}${nameSuffix}: ${text}`;
                     };
 
-                    logDebug('Request params', {
-                        temperature: requestParams.temperature,
-                        max_tokens: requestParams.max_tokens,
-                        top_p: requestParams.top_p,
-                        reasoning_effort: reasoningLevel
-                    });
+                    for (const m of rawMessages) {
+                        const role = (m?.role || 'user').toLowerCase();
+                        const content = m?.content;
 
-                    const resolvedModel = await resolveRequestedModel(model);
-                    pID = resolvedModel.providerID;
-                    mID = resolvedModel.modelID;
-                    if (resolvedModel.aliasFrom) {
-                        logDebug('Resolved model alias', {
-                            from: resolvedModel.aliasFrom,
-                            to: resolvedModel.resolved
-                        });
-                    }
+                        if (role === 'system') {
+                            const text = normalizeMessageContent(content);
+                            if (text) systemChunks.push(text);
+                            continue;
+                        }
 
-                    /**
-                     * @param {unknown} content Message content.
-                     * @returns {string} Text content.
-                     */
-                    const normalizeMessageContent = (content) => normalizeTextContent(content);
+                        deliveredCount += 1;
+                        const deliver = deliveredCount >= includeFromIndex;
 
-                    /**
-                     * Render the client transcript into the prompt parts, the system
-                     * prompt and the text history the conversation registry digests.
-                     *
-                     * @param {ChatMessage[]} rawMessages Full client history, in order.
-                     * @param {import('../tools/registry.js').ExternalTool[]} [externalToolRegistry]
-                     *   Registry of this request.
-                     * @param {{toolCallMap?: Map<string|undefined, string|undefined>, includeFromIndex?: number}} [options]
-                     *   Build options.
-                     * @returns {Promise<PromptParts>} Parts plus the text renderings.
-                     */
-                    const buildPromptParts = async (rawMessages, externalToolRegistry = [], options = {}) => {
-                        /** @type {Array<Record<string, unknown>>} */
-                        const parts = [];
-                        /** @type {string[]} */
-                        const systemChunks = [];
-                        /** @type {string[]} */
-                        const userContents = [];
-                        /** @type {Map<string|undefined, string|undefined>} */
-                        const assistantToolCalls = options.toolCallMap || new Map();
-                        // A reused session already holds the earlier turns, so only the
-                        // messages appended since the last request are delivered as parts.
-                        // Everything is still walked: the system prompt is rebuilt from the
-                        // full history and tool-call ids must resolve for older messages too,
-                        // otherwise a tool result in the new turn loses its name.
-                        const includeFromIndex =
-                            Number.isInteger(options.includeFromIndex) &&
-                            /** @type {number} */ (options.includeFromIndex) > 0
-                                ? /** @type {number} */ (options.includeFromIndex)
-                                : 0;
-                        let deliveredCount = -1;
-                        // Token accounting stays conversation-wide: on a reused session the
-                        // earlier turns are part of the prompt the model sees even though
-                        // they are not re-sent.
-                        /** @type {string[]} */
-                        const historyTexts = [];
-                        /**
-                         * @param {string} role Message role.
-                         * @param {string|undefined} name Author name, when the client set one.
-                         * @param {string} text Rendered text.
-                         * @returns {string} `ROLE(name): text` line.
-                         */
-                        const formatRoleLine = (role, name, text) => {
-                            const roleLabel = role.toUpperCase();
-                            const nameSuffix = name ? `(${name})` : '';
-                            return `${roleLabel}${nameSuffix}: ${text}`;
-                        };
-
-                        for (const m of rawMessages) {
-                            const role = (m?.role || 'user').toLowerCase();
-                            const content = m?.content;
-
-                            if (role === 'system') {
-                                const text = normalizeMessageContent(content);
-                                if (text) systemChunks.push(text);
-                                continue;
-                            }
-
-                            deliveredCount += 1;
-                            const deliver = deliveredCount >= includeFromIndex;
-
-                            if (role === 'assistant' && Array.isArray(m?.tool_calls) && m.tool_calls.length) {
-                                const serializedToolCalls = m.tool_calls
-                                    .map((toolCall, index) => ({
-                                        id: toolCall?.id || `call_${index + 1}`,
-                                        name:
-                                            findExternalToolByName(
-                                                externalToolRegistry,
-                                                toolCall?.function?.name || toolCall?.name
-                                            )?.namespacedName ||
-                                            toolCall?.function?.name ||
-                                            toolCall?.name,
-                                        arguments: normalizeToolArguments(
-                                            toolCall?.function?.arguments ?? toolCall?.arguments
-                                        )
-                                    }))
-                                    .filter((toolCall) => toolCall.name);
-                                if (serializedToolCalls.length) {
-                                    serializedToolCalls.forEach((toolCall) => {
-                                        assistantToolCalls.set(toolCall.id, toolCall.name);
-                                    });
-                                    historyTexts.push(
-                                        `ASSISTANT: <function_calls>${JSON.stringify(serializedToolCalls)}</function_calls>`
-                                    );
-                                    if (deliver) {
-                                        parts.push({
-                                            type: 'text',
-                                            text: `ASSISTANT: <function_calls>${JSON.stringify(serializedToolCalls)}</function_calls>`
-                                        });
-                                    }
-                                }
-                            }
-
-                            if (role === 'tool') {
-                                const text = normalizeMessageContent(content);
-                                if (text) {
-                                    const mappedTool =
-                                        findExternalToolByName(externalToolRegistry, m?.name) ||
+                        if (role === 'assistant' && Array.isArray(m?.tool_calls) && m.tool_calls.length) {
+                            const serializedToolCalls = m.tool_calls
+                                .map((toolCall, index) => ({
+                                    id: toolCall?.id || `call_${index + 1}`,
+                                    name:
                                         findExternalToolByName(
                                             externalToolRegistry,
-                                            assistantToolCalls.get(m?.tool_call_id)
-                                        );
-                                    const toolName =
-                                        mappedTool?.namespacedName ||
-                                        assistantToolCalls.get(m?.tool_call_id) ||
-                                        m?.name ||
-                                        `${EXTERNAL_TOOL_PREFIX}unknown`;
-                                    const toolCallId =
-                                        m?.tool_call_id || `call_${toolName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
-                                    const toolResultText = `TOOL_RESULT: ${JSON.stringify({ tool_call_id: toolCallId, name: toolName, content: text })}`;
-                                    historyTexts.push(toolResultText);
-                                    if (deliver) {
-                                        parts.push({ type: 'text', text: toolResultText });
-                                    }
-                                }
-                                continue;
-                            }
-
-                            if (!content) continue;
-
-                            if (typeof content === 'string') {
-                                const line = formatRoleLine(role, m?.name, content);
-                                historyTexts.push(line);
-                                if (deliver) {
-                                    if (role === 'user') userContents.push(content);
-                                    parts.push({ type: 'text', text: line });
-                                }
-                            } else if (Array.isArray(content)) {
-                                for (const part of content) {
-                                    if (!part) continue;
-
-                                    if (part.type === 'text') {
-                                        const text = part.text || '';
-                                        const line = formatRoleLine(role, m?.name, text);
-                                        historyTexts.push(line);
-                                        if (deliver) {
-                                            if (role === 'user') userContents.push(text);
-                                            parts.push({ type: 'text', text: line });
-                                        }
-                                    } else if (part.type === 'image_url') {
-                                        if (!deliver) continue;
-                                        const imageUrl =
-                                            typeof part.image_url === 'string'
-                                                ? part.image_url
-                                                : part.image_url?.url;
-                                        if (imageUrl) {
-                                            try {
-                                                const dataUri = await getImageDataUri(imageUrl);
-                                                const mime = dataUri.split(';')[0].split(':')[1];
-                                                parts.push({
-                                                    type: 'file',
-                                                    mime,
-                                                    url: dataUri,
-                                                    filename: 'image'
-                                                });
-                                            } catch (imgErr) {
-                                                logWarn(
-                                                    '[Proxy] Skipping image due to error:',
-                                                    /** @type {Error} */ (imgErr).message
-                                                );
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        return {
-                            parts,
-                            system: systemChunks.join('\n\n'),
-                            fullPromptText: historyTexts.join('\n\n'),
-                            lastUserMsg: userContents[userContents.length - 1] || ''
-                        };
-                    };
-
-                    const requestToolContext = createRequestToolContext(
-                        tools,
-                        tool_choice,
-                        requestOpencodeConfig
-                    );
-                    const toolMode = requestToolContext.mode;
-                    const externalToolContext = requestToolContext.external;
-                    const externalToolRegistry = externalToolContext.registry;
-                    const externalToolChoice = externalToolContext.toolChoice;
-                    const internalToolContext = requestToolContext.internal;
-                    trackToolMode(toolMode, {
-                        configuredAllowlist: internalToolContext.allowedToolNames,
-                        requestedAllowlist: internalToolContext.requestedAllowlist,
-                        deniedRequestedTools: internalToolContext.deniedRequestedTools,
-                        resolutionPath: internalToolContext.resolutionPath,
-                        resultingMode: internalToolContext.resultingMode,
-                        route: '/v1/chat/completions'
-                    });
-
-                    // Which upstream serves this turn depends on the model alone: the
-                    // OpenCode-compatible endpoints answer directly, free-tier Zen
-                    // models need the runtime.
-                    const servingMode = router.shouldUseDirect(pID, mID).direct ? 'direct' : 'runtime';
-
-                    // The conversation is resolved first, because both upstreams need
-                    // the same identity: a stable session for x-opencode-session, or a
-                    // reusable runtime session. The registry takes the per-conversation
-                    // turn lock, plans the delta and snapshots a reused session.
-                    const deliverableMessages = conversationDeliverableMessages(messages);
-                    const conversationScope = conversationScopeForTurn(
-                        pID,
-                        mID,
-                        toolMode,
-                        toolsFingerprintFor(tools, tool_choice),
-                        servingMode
-                    );
-                    const resolvedTurn = await resolveConversationTurn({
-                        req,
-                        deliverable: deliverableMessages,
-                        scope: conversationScope
-                    });
-                    conversationKey = resolvedTurn.key;
-                    const conversationEntry = resolvedTurn.entry;
-                    releaseConversationLock = resolvedTurn.release;
-                    const conversationIdentity = resolvedTurn.identity;
-                    const derivedIdentity =
-                        resolvedTurn.identity?.source === 'derived' ? resolvedTurn.identity : null;
-                    if (resolvedTurn.busy) {
-                        return res.status(503).json(conversationBusyBody());
-                    }
-
-                    if (servingMode === 'direct') {
-                        const sessionId =
-                            conversationEntry?.mode === 'direct' && conversationEntry.sessionId
-                                ? conversationEntry.sessionId
-                                : newSessionId();
-                        const turnPlanForDirect = resolvedTurn.plan;
-                        const { opencode: _omitProxyExtension, ...upstreamBody } = req.body || {};
-                        const directResult = await runDirectTurn({
-                            path: '/chat/completions',
-                            res,
-                            providerID: pID,
-                            modelID: mID,
-                            sessionId,
-                            body: upstreamBody,
-                            stream,
-                            clientModelName: `${pID}/${mID}`,
-                            signal: turnAbort.signal,
-                            fallbackTurn: {
-                                providerID: pID,
-                                modelID: mID,
-                                key: conversationKey,
-                                mode: 'direct'
-                            },
-                            onSuccess: (answerText) =>
-                                storeConversationEntry(conversationKey, {
-                                    sessionId,
-                                    mode: 'direct',
-                                    sentCount: turnPlanForDirect.sentCount,
-                                    sentDigest: turnPlanForDirect.sentDigest,
-                                    replyText: typeof answerText === 'string' ? answerText : null,
-                                    startKey: derivedIdentity?.startKey || null
-                                })
-                        });
-                        if (directResult.handled) return;
-                    }
-
-                    // Ensure backend is running
-                    await ensureBackend();
-
-                    // Set active model
-                    try {
-                        await client.config.update({
-                            body: {
-                                activeModel: { providerID: pID, modelID: mID }
-                            }
-                        });
-                    } catch (confError) {
-                        logDebug('Failed to set active model:', /** @type {Error} */ (confError).message);
-                    }
-
-                    // With the tool-lock plugin the session title carries the tool
-                    // policy, so it is resolved before any session is created.
-                    const toolControl = await resolveToolControl(toolMode, internalToolContext);
-                    turnPlan = resolvedTurn.plan;
-
-                    // Validate before any session is created or evicted: an early 400
-                    // must not leave an upstream session behind, and header-less
-                    // clients must see the same validation order as before.
-                    if (!hasDeliverablePromptContent(messages, turnPlan.deltaStartIndex)) {
-                        return res.status(400).json({
-                            error: {
-                                message: 'messages must include at least one non-system text message'
-                            }
-                        });
-                    }
-
-                    if (turnPlan.reuse) {
-                        sessionId = /** @type {string} */ (resolvedTurn.sessionId);
-                        logDebug('Reusing conversation session', {
-                            sessionId,
-                            header: conversationIdentity?.header || 'derived',
-                            deliveredTurns: resolvedTurn.entry?.sentCount,
-                            appendedTurns: turnPlan.delta.length
-                        });
-                    } else {
-                        if (resolvedTurn.entry?.sessionId) {
-                            await registry.discard({ key: conversationKey });
-                        }
-                        sessionId = await createSession(toolControl);
-                        logDebug('Session created', {
-                            sessionId,
-                            historyRewritten: turnPlan.rewrite,
-                            derived: Boolean(derivedIdentity)
-                        });
-                    }
-
-                    const {
-                        parts,
-                        system: systemMsg,
-                        fullPromptText,
-                        lastUserMsg
-                    } = await buildPromptParts(messages, externalToolRegistry, {
-                        includeFromIndex: turnPlan.deltaStartIndex
-                    });
-                    const systemWithGuard = buildSystemPrompt(
-                        [systemMsg, externalToolContext.prompt].filter(Boolean).join('\n\n'),
-                        requestParams.reasoning_effort,
-                        toolMode,
-                        internalToolContext.allowedToolNames
-                    );
-                    if (!parts.length) {
-                        return res.status(400).json({
-                            error: {
-                                message: 'messages must include at least one non-system text message'
-                            }
-                        });
-                    }
-                    logDebug('Request start', {
-                        model: `${pID}/${mID}`,
-                        stream: Boolean(stream),
-                        userMessages: messages.length,
-                        system: Boolean(systemMsg),
-                        lastUserLength: lastUserMsg?.length || 0,
-                        parts: parts.length,
-                        disableTools: DISABLE_TOOLS,
-                        toolMode,
-                        internalAllowedTools: internalToolContext.allowedToolNames,
-                        requestedInternalTools: internalToolContext.requestedAllowlist,
-                        deniedRequestedTools: internalToolContext.deniedRequestedTools,
-                        resolutionPath: internalToolContext.resolutionPath,
-                        resultingMode: internalToolContext.resultingMode
-                    });
-
-                    id = `chatcmpl-${crypto.randomUUID()}`;
-                    keepaliveInterval = null;
-                    let completionTokens = 0;
-                    let reasoningTokens = 0;
-
-                    // A reused session already holds the earlier turns; remember what
-                    // exists now so neither polling nor the event stream can report an
-                    // older answer as this turn's result. Without the snapshot the
-                    // previous answer would be served as this turn's, so a failed read
-                    // fails the turn instead of falling back to unfiltered polling.
-                    if (turnPlan.reuse) {
-                        turnBaseline = resolvedTurn.baseline;
-                        if (!turnBaseline || !turnBaseline.ok) {
-                            await discardConversationEntry(conversationKey);
-                            return res.status(503).json(sessionStateUnavailableBody());
-                        }
-                    }
-
-                    // Append a short contract reminder as the last part so the model
-                    // sees it immediately before generating. With the contract only in
-                    // the 16KB+ system prompt it gets buried; position matters a lot for
-                    // compliance. deepseek-v4-flash-free: 50% → 100% call rate.
-                    /**
-                     * @param {Array<Record<string, unknown>>} builtParts Parts built for the turn.
-                     * @returns {Array<Record<string, unknown>>} Parts with the reminder appended.
-                     */
-                    const withToolReminder = (builtParts) =>
-                        externalToolContext.reminder
-                            ? [...builtParts, { type: 'text', text: externalToolContext.reminder }]
-                            : builtParts;
-
-                    // Retrying rotates to an empty session, which needs the whole
-                    // history again: the delta window only makes sense for the session
-                    // that already holds the earlier turns.
-                    const rebuildPromptPartsForNewSession = async () => {
-                        const rebuilt = await buildPromptParts(messages, externalToolRegistry, {
-                            includeFromIndex: 0
-                        });
-                        if (rebuilt.parts.length) {
-                            promptParams.body.parts = withToolReminder(rebuilt.parts);
-                        }
-                    };
-
-                    /** @type {PromptParams} */
-                    const promptParams = {
-                        path: { id: sessionId },
-                        body: {
-                            model: { providerID: pID, modelID: mID },
-                            system: systemWithGuard,
-                            parts: withToolReminder(parts),
-                            ...(requestParams.max_tokens && { max_tokens: requestParams.max_tokens }),
-                            ...(requestParams.temperature !== undefined && {
-                                temperature: requestParams.temperature
-                            }),
-                            ...(requestParams.top_p !== undefined && { top_p: requestParams.top_p }),
-                            ...(requestParams.stop && { stop: requestParams.stop })
-                        }
-                    };
-                    const { toolOverrides } = toolControl;
-                    if (toolOverrides && Object.keys(toolOverrides).length > 0) {
-                        promptParams.body.tools = toolOverrides;
-                    }
-
-                    const makeForcedChatToolCallRequester = () =>
-                        createForcedToolCallRequester({
-                            mode: externalToolChoice.mode,
-                            sessionId: /** @type {string} */ (sessionId),
-                            systemWithGuard,
-                            requiredTool:
-                                externalToolChoice.requiredTool || externalToolRegistry[0]?.namespacedName,
-                            providerID: pID,
-                            modelID: mID,
-                            baselineProvider: () => snapshotSessionState(/** @type {string} */ (sessionId)),
-                            toolOverrides,
-                            requestTimeoutMs: REQUEST_TIMEOUT_MS,
-                            signal: turnAbort.signal,
-                            forbidThinkBlock: true
-                        });
-                    let requestForcedChatToolCall = makeForcedChatToolCallRequester();
-
-                    res.setHeader('Content-Type', stream ? 'text/event-stream' : 'application/json');
-                    res.setHeader('Cache-Control', 'no-cache');
-                    res.setHeader('Connection', 'keep-alive');
-
-                    if (stream) {
-                        const shouldStripStreamingToolMarkup = externalToolRegistry.length > 0;
-                        /** @type {ToolCallFilterWithFlush} */
-                        const filterContentDelta = /** @type {ToolCallFilterWithFlush} */ (
-                            createToolCallFilter({
-                                disableTools: DISABLE_TOOLS,
-                                forceStrip: shouldStripStreamingToolMarkup
-                            })
-                        );
-                        /** @type {ToolCallFilterWithFlush} */
-                        const filterReasoningDelta = /** @type {ToolCallFilterWithFlush} */ (
-                            createToolCallFilter({
-                                disableTools: DISABLE_TOOLS,
-                                forceStrip: shouldStripStreamingToolMarkup
-                            })
-                        );
-                        /** @type {ExternalToolCallParserWithFlush} */
-                        const parseContentToolCalls = /** @type {ExternalToolCallParserWithFlush} */ (
-                            createExternalToolCallStreamParser(externalToolRegistry)
-                        );
-                        /** @type {ExternalToolCallParserWithFlush} */
-                        const parseReasoningToolCalls = /** @type {ExternalToolCallParserWithFlush} */ (
-                            createExternalToolCallStreamParser(externalToolRegistry)
-                        );
-                        let streamedContent = '';
-                        let streamedReasoning = '';
-                        let rawStreamedContent = '';
-                        let rawStreamedReasoning = '';
-                        /** @type {import('../tools/contract.js').WireToolCall[]} */
-                        const streamedToolCalls = [];
-                        keepaliveInterval = null;
-                        completionTokens = 0;
-                        reasoningTokens = 0;
-
-                        const ensureKeepalive = () => {
-                            if (!keepaliveInterval) {
-                                keepaliveInterval = setInterval(() => {
-                                    if (!res.destroyed) {
-                                        res.write(': keepalive\n\n');
-                                    }
-                                }, 15000);
-                            }
-                        };
-                        ensureKeepalive();
-
-                        /**
-                         * @param {string} delta Text delta.
-                         * @param {boolean} [isReasoning] Whether the delta is reasoning text.
-                         * @returns {void}
-                         */
-                        const sendDelta = (delta, isReasoning = false) => {
-                            if (!delta) return;
-                            if (isReasoning) rawStreamedReasoning += delta;
-                            else rawStreamedContent += delta;
-                            const parsedDeltaToolCalls = isReasoning
-                                ? parseReasoningToolCalls(delta)
-                                : parseContentToolCalls(delta);
-                            parsedDeltaToolCalls.forEach((toolCall) => {
-                                streamedToolCalls.push(toolCall);
-                                res.write(
-                                    `data: ${JSON.stringify({
-                                        id,
-                                        object: 'chat.completion.chunk',
-                                        created: Math.floor(Date.now() / 1000),
-                                        model: `${pID}/${mID}`,
-                                        choices: [
-                                            {
-                                                index: 0,
-                                                delta: {
-                                                    tool_calls: [
-                                                        {
-                                                            index: streamedToolCalls.length - 1,
-                                                            id: toolCall.id,
-                                                            type: 'function',
-                                                            function: {
-                                                                name: toolCall.function.name,
-                                                                arguments: toolCall.function.arguments
-                                                            }
-                                                        }
-                                                    ]
-                                                },
-                                                finish_reason: null
-                                            }
-                                        ]
-                                    })}\n\n`
+                                            toolCall?.function?.name || toolCall?.name
+                                        )?.namespacedName ||
+                                        toolCall?.function?.name ||
+                                        toolCall?.name,
+                                    arguments: normalizeToolArguments(
+                                        toolCall?.function?.arguments ?? toolCall?.arguments
+                                    )
+                                }))
+                                .filter((toolCall) => toolCall.name);
+                            if (serializedToolCalls.length) {
+                                serializedToolCalls.forEach((toolCall) => {
+                                    assistantToolCalls.set(toolCall.id, toolCall.name);
+                                });
+                                historyTexts.push(
+                                    `ASSISTANT: <function_calls>${JSON.stringify(serializedToolCalls)}</function_calls>`
                                 );
-                            });
-                            const filtered = isReasoning
-                                ? filterReasoningDelta(delta)
-                                : filterContentDelta(delta);
-                            if (!filtered) return;
-                            if (isReasoning) {
-                                streamedReasoning += filtered;
-                                reasoningTokens += Math.ceil(filtered.length / 4);
-                            } else {
-                                streamedContent += filtered;
-                                completionTokens += Math.ceil(filtered.length / 4);
-                            }
-                            // Reasoning and answer are streamed as separate fields so clients
-                            // that read `reasoning_content` (DeepSeek/Qwen-style) see the thinking
-                            // without it polluting `content`.
-                            const deltaField = isReasoning
-                                ? { reasoning_content: filtered }
-                                : { content: filtered };
-                            const chunk = {
-                                id,
-                                object: 'chat.completion.chunk',
-                                created: Math.floor(Date.now() / 1000),
-                                model: `${pID}/${mID}`,
-                                choices: [{ index: 0, delta: deltaField, finish_reason: null }]
-                            };
-                            res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-                        };
-
-                        let collected = null;
-                        for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt += 1) {
-                            if (attempt > 1) {
-                                // Retry on a fresh session: the failed attempt left an errored
-                                // assistant message in the old one, and re-prompting the same
-                                // session would append a duplicate user turn to the context.
-                                // Safe to rotate because nothing has been streamed yet.
-                                try {
-                                    await client.session.delete({ path: { id: sessionId } });
-                                } catch (e) {
-                                    logDebug('Failed to delete retried session', {
-                                        sessionId,
-                                        error: /** @type {Error} */ (e).message
+                                if (deliver) {
+                                    parts.push({
+                                        type: 'text',
+                                        text: `ASSISTANT: <function_calls>${JSON.stringify(serializedToolCalls)}</function_calls>`
                                     });
                                 }
-                                sessionId = await createSession(toolControl);
-                                promptParams.path.id = sessionId;
-                                // The retry session is empty, so nothing from the old one
-                                // qualifies as this turn's answer, and it needs the full
-                                // history rather than the delta the old session got.
-                                turnBaseline = null;
-                                await rebuildPromptPartsForNewSession();
-                                requestForcedChatToolCall = makeForcedChatToolCallRequester();
-                                streamedContent = '';
-                                streamedReasoning = '';
-                                rawStreamedContent = '';
-                                rawStreamedReasoning = '';
-                                streamedToolCalls.length = 0;
-                                completionTokens = 0;
-                                reasoningTokens = 0;
-                                await sleep(RETRY_BACKOFF_BASE_MS * attempt);
                             }
-                            try {
-                                const collectPromise = collectFromEvents(
-                                    sessionId,
-                                    REQUEST_TIMEOUT_MS,
-                                    sendDelta,
-                                    EVENT_FIRST_DELTA_TIMEOUT_MS,
-                                    EVENT_IDLE_TIMEOUT_MS,
-                                    turnBaseline,
-                                    turnAbort.signal
-                                );
-                                /** @type {Promise<CollectedTurn>} */
-                                const safeCollect = collectPromise.catch((err) => ({ __error: err }));
-                                client.session
-                                    .prompt(promptParams)
-                                    .catch((/** @type {Error} */ err) =>
-                                        logDebug('Prompt error:', err.message)
+                        }
+
+                        if (role === 'tool') {
+                            const text = normalizeMessageContent(content);
+                            if (text) {
+                                const mappedTool =
+                                    findExternalToolByName(externalToolRegistry, m?.name) ||
+                                    findExternalToolByName(
+                                        externalToolRegistry,
+                                        assistantToolCalls.get(m?.tool_call_id)
                                     );
-                                collected = await safeCollect;
-                            } catch (e) {
-                                logDebug('Stream error:', /** @type {Error} */ (e).message);
-                            }
-
-                            const attemptError = collected?.error || collected?.__error || null;
-                            const nothingStreamed =
-                                !rawStreamedContent &&
-                                !rawStreamedReasoning &&
-                                streamedToolCalls.length === 0;
-                            if (
-                                attemptError &&
-                                nothingStreamed &&
-                                attempt < RETRY_MAX_ATTEMPTS &&
-                                isTransientUpstreamError(attemptError)
-                            ) {
-                                logWarn(
-                                    `[Proxy] Transient upstream error (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}), retrying:`,
-                                    attemptError.data?.message ||
-                                        attemptError.message ||
-                                        attemptError.name ||
-                                        'unknown'
-                                );
-                                continue;
-                            }
-                            break;
-                        }
-
-                        if (collected?.clientClosed) {
-                            logDebug('Client closed the stream; ending the turn', { sessionId });
-                            return;
-                        }
-
-                        if (collected && collected.__error) {
-                            logDebug('SSE collect error, falling back to polling', {
-                                sessionId,
-                                error: collected.__error?.message
-                            });
-                            const { content, reasoning, error } = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            );
-                            if (error && !content && !reasoning) {
-                                sendDelta(
-                                    `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
-                                );
-                            } else {
-                                if (reasoning) sendDelta(reasoning, true);
-                                if (content) sendDelta(content, false);
-                            }
-                        } else if (collected && collected.noData) {
-                            logDebug('Fallback to polling (stream)', { sessionId });
-                            const { content, reasoning, error } = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            );
-                            if (error && !content && !reasoning) {
-                                sendDelta(
-                                    `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
-                                );
-                            } else {
-                                if (reasoning) sendDelta(reasoning, true);
-                                if (content) sendDelta(content, false);
-                            }
-                        } else if (collected && collected.idleTimeout) {
-                            logDebug('SSE idle timeout, polling for completion', { sessionId });
-                            const { content, reasoning, error } = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            );
-                            if (error && !content && !reasoning) {
-                                sendDelta(
-                                    `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
-                                );
-                            } else {
-                                const remainingReasoning =
-                                    reasoning && reasoning.startsWith(rawStreamedReasoning)
-                                        ? reasoning.slice(rawStreamedReasoning.length)
-                                        : reasoning;
-                                const remainingContent =
-                                    content && content.startsWith(rawStreamedContent)
-                                        ? content.slice(rawStreamedContent.length)
-                                        : content;
-                                if (remainingReasoning) sendDelta(remainingReasoning, true);
-                                if (remainingContent) sendDelta(remainingContent, false);
-                            }
-                        }
-
-                        if (
-                            collected &&
-                            !streamedContent &&
-                            !streamedReasoning &&
-                            (collected.reasoning || collected.content)
-                        ) {
-                            if (collected.reasoning) sendDelta(collected.reasoning, true);
-                            if (collected.content) sendDelta(collected.content, false);
-                        }
-
-                        if (!streamedContent && !streamedReasoning) {
-                            logDebug('SSE returned empty, falling back to polling', { sessionId });
-                            const { content, reasoning, error } = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            );
-                            if (error && !content && !reasoning) {
-                                sendDelta(
-                                    `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
-                                );
-                            } else {
-                                if (reasoning) sendDelta(reasoning, true);
-                                if (content) sendDelta(content, false);
-                            }
-                        } else if (streamedReasoning && !streamedContent) {
-                            // Reconciliation for reasoning models: the reasoning streamed but the
-                            // answer text never arrived because every delta was tagged as reasoning
-                            // (issue #9). The message snapshot separates the two correctly, so
-                            // recover the missing answer from it instead of returning empty content.
-                            logDebug('Reasoning streamed but no content, reconciling from snapshot', {
-                                sessionId
-                            });
-                            const snapshot = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            ).catch(() => null);
-                            if (snapshot && snapshot.content) {
-                                const remainingContent = rawStreamedContent
-                                    ? snapshot.content.slice(rawStreamedContent.length)
-                                    : snapshot.content;
-                                if (remainingContent) sendDelta(remainingContent, false);
-                            }
-                        }
-
-                        // Flush held buffers from the stream parsers and filters before final batch parse.
-                        const flushedReasoningCalls = parseReasoningToolCalls.flush
-                            ? parseReasoningToolCalls.flush()
-                            : [];
-                        const flushedContentCalls = parseContentToolCalls.flush
-                            ? parseContentToolCalls.flush()
-                            : [];
-                        const flushedReasoningText = filterReasoningDelta.flush
-                            ? filterReasoningDelta.flush()
-                            : '';
-                        const flushedContentText = filterContentDelta.flush ? filterContentDelta.flush() : '';
-                        const finalReasoningText = rawStreamedReasoning + flushedReasoningText;
-                        const finalContentText = rawStreamedContent + flushedContentText;
-
-                        // Parse each channel, then retry on the two joined. Models sometimes open a
-                        // block in reasoning and close it in content, leaving neither channel with a
-                        // complete block. The joined retry only runs when nothing was found, so a
-                        // block contained in one channel is never counted twice.
-                        const parseStreamedToolCalls = () => {
-                            if (externalToolRegistry.length === 0) return [];
-                            const perChannel = [
-                                ...flushedReasoningCalls,
-                                ...flushedContentCalls,
-                                ...parseExternalToolCallsFromText(
-                                    externalToolRegistry,
-                                    finalReasoningText,
-                                    finalContentText
-                                )
-                            ];
-                            if (perChannel.length > 0) return perChannel;
-                            return parseExternalToolCallsFromText(
-                                externalToolRegistry,
-                                finalReasoningText + finalContentText
-                            );
-                        };
-
-                        let parsedToolCalls =
-                            streamedToolCalls.length > 0 ? streamedToolCalls : parseStreamedToolCalls();
-                        if (parsedToolCalls.length === 0 && externalToolChoice.mode === 'required') {
-                            const forcedResponse = await requestForcedChatToolCall();
-                            if (forcedResponse) {
-                                parsedToolCalls = parseExternalToolCallsFromText(
-                                    externalToolRegistry,
-                                    forcedResponse.reasoning,
-                                    forcedResponse.content
-                                );
-                            }
-                        }
-                        const { validCalls: validatedStreamedToolCalls } = finalizeValidatedToolCalls(
-                            parsedToolCalls,
-                            externalToolRegistry
-                        );
-                        const finalStreamedToolCalls = validatedStreamedToolCalls;
-                        if (finalStreamedToolCalls.length > 0 && streamedToolCalls.length === 0) {
-                            const toolCallDeltas = finalStreamedToolCalls.map((toolCall, index) => ({
-                                index,
-                                id: toolCall.id,
-                                type: 'function',
-                                function: {
-                                    name: toolCall.function.name,
-                                    arguments: toolCall.function.arguments
+                                const toolName =
+                                    mappedTool?.namespacedName ||
+                                    assistantToolCalls.get(m?.tool_call_id) ||
+                                    m?.name ||
+                                    `${EXTERNAL_TOOL_PREFIX}unknown`;
+                                const toolCallId =
+                                    m?.tool_call_id || `call_${toolName.replace(/[^a-zA-Z0-9_]/g, '_')}`;
+                                const toolResultText = `TOOL_RESULT: ${JSON.stringify({ tool_call_id: toolCallId, name: toolName, content: text })}`;
+                                historyTexts.push(toolResultText);
+                                if (deliver) {
+                                    parts.push({ type: 'text', text: toolResultText });
                                 }
-                            }));
+                            }
+                            continue;
+                        }
+
+                        if (!content) continue;
+
+                        if (typeof content === 'string') {
+                            const line = formatRoleLine(role, m?.name, content);
+                            historyTexts.push(line);
+                            if (deliver) {
+                                if (role === 'user') userContents.push(content);
+                                parts.push({ type: 'text', text: line });
+                            }
+                        } else if (Array.isArray(content)) {
+                            for (const part of content) {
+                                if (!part) continue;
+
+                                if (part.type === 'text') {
+                                    const text = part.text || '';
+                                    const line = formatRoleLine(role, m?.name, text);
+                                    historyTexts.push(line);
+                                    if (deliver) {
+                                        if (role === 'user') userContents.push(text);
+                                        parts.push({ type: 'text', text: line });
+                                    }
+                                } else if (part.type === 'image_url') {
+                                    if (!deliver) continue;
+                                    const imageUrl =
+                                        typeof part.image_url === 'string'
+                                            ? part.image_url
+                                            : part.image_url?.url;
+                                    if (imageUrl) {
+                                        try {
+                                            const dataUri = await getImageDataUri(imageUrl);
+                                            const mime = dataUri.split(';')[0].split(':')[1];
+                                            parts.push({
+                                                type: 'file',
+                                                mime,
+                                                url: dataUri,
+                                                filename: 'image'
+                                            });
+                                        } catch (imgErr) {
+                                            logWarn(
+                                                '[Proxy] Skipping image due to error:',
+                                                /** @type {Error} */ (imgErr).message
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    return {
+                        parts,
+                        system: systemChunks.join('\n\n'),
+                        fullPromptText: historyTexts.join('\n\n'),
+                        lastUserMsg: userContents[userContents.length - 1] || ''
+                    };
+                };
+
+                const requestToolContext = createRequestToolContext(
+                    tools,
+                    tool_choice,
+                    requestOpencodeConfig
+                );
+                const toolMode = requestToolContext.mode;
+                const externalToolContext = requestToolContext.external;
+                const externalToolRegistry = externalToolContext.registry;
+                const externalToolChoice = externalToolContext.toolChoice;
+                const internalToolContext = requestToolContext.internal;
+                trackToolMode(toolMode, {
+                    configuredAllowlist: internalToolContext.allowedToolNames,
+                    requestedAllowlist: internalToolContext.requestedAllowlist,
+                    deniedRequestedTools: internalToolContext.deniedRequestedTools,
+                    resolutionPath: internalToolContext.resolutionPath,
+                    resultingMode: internalToolContext.resultingMode,
+                    route: '/v1/chat/completions'
+                });
+
+                // Which upstream serves this turn depends on the model alone: the
+                // OpenCode-compatible endpoints answer directly, free-tier Zen
+                // models need the runtime.
+                const servingMode = router.shouldUseDirect(pID, mID).direct ? 'direct' : 'runtime';
+
+                // The conversation is resolved first, because both upstreams need
+                // the same identity: a stable session for x-opencode-session, or a
+                // reusable runtime session. The registry takes the per-conversation
+                // turn lock, plans the delta and snapshots a reused session.
+                const deliverableMessages = conversationDeliverableMessages(messages);
+                const conversationScope = conversationScopeForTurn(
+                    pID,
+                    mID,
+                    toolMode,
+                    toolsFingerprintFor(tools, tool_choice),
+                    servingMode
+                );
+                const resolvedTurn = await resolveConversationTurn({
+                    req,
+                    deliverable: deliverableMessages,
+                    scope: conversationScope
+                });
+                conversationKey = resolvedTurn.key;
+                const conversationEntry = resolvedTurn.entry;
+                releaseConversationLock = resolvedTurn.release;
+                const conversationIdentity = resolvedTurn.identity;
+                const derivedIdentity =
+                    resolvedTurn.identity?.source === 'derived' ? resolvedTurn.identity : null;
+                if (resolvedTurn.busy) {
+                    res.status(503).json(conversationBusyBody());
+                    return;
+                }
+
+                if (servingMode === 'direct') {
+                    const sessionId =
+                        conversationEntry?.mode === 'direct' && conversationEntry.sessionId
+                            ? conversationEntry.sessionId
+                            : newSessionId();
+                    const turnPlanForDirect = resolvedTurn.plan;
+                    const { opencode: _omitProxyExtension, ...upstreamBody } = req.body || {};
+                    const directResult = await runDirectTurn({
+                        path: '/chat/completions',
+                        res,
+                        providerID: pID,
+                        modelID: mID,
+                        sessionId,
+                        body: upstreamBody,
+                        stream,
+                        clientModelName: `${pID}/${mID}`,
+                        signal: turnAbort.signal,
+                        fallbackTurn: {
+                            providerID: pID,
+                            modelID: mID,
+                            key: conversationKey,
+                            mode: 'direct'
+                        },
+                        onSuccess: (answerText) =>
+                            storeConversationEntry(conversationKey, {
+                                sessionId,
+                                mode: 'direct',
+                                sentCount: turnPlanForDirect.sentCount,
+                                sentDigest: turnPlanForDirect.sentDigest,
+                                replyText: typeof answerText === 'string' ? answerText : null,
+                                startKey: derivedIdentity?.startKey || null
+                            })
+                    });
+                    if (directResult.handled) return;
+                }
+
+                // Ensure backend is running
+                await ensureBackend();
+
+                // Set active model
+                try {
+                    await client.config.update({
+                        body: {
+                            activeModel: { providerID: pID, modelID: mID }
+                        }
+                    });
+                } catch (confError) {
+                    logDebug('Failed to set active model:', /** @type {Error} */ (confError).message);
+                }
+
+                // With the tool-lock plugin the session title carries the tool
+                // policy, so it is resolved before any session is created.
+                const toolControl = await resolveToolControl(toolMode, internalToolContext);
+                turnPlan = resolvedTurn.plan;
+
+                // Validate before any session is created or evicted: an early 400
+                // must not leave an upstream session behind, and header-less
+                // clients must see the same validation order as before.
+                if (!hasDeliverablePromptContent(messages, turnPlan.deltaStartIndex)) {
+                    res.status(400).json({
+                        error: {
+                            message: 'messages must include at least one non-system text message'
+                        }
+                    });
+                    return;
+                }
+
+                if (turnPlan.reuse) {
+                    sessionId = /** @type {string} */ (resolvedTurn.sessionId);
+                    logDebug('Reusing conversation session', {
+                        sessionId,
+                        header: conversationIdentity?.header || 'derived',
+                        deliveredTurns: resolvedTurn.entry?.sentCount,
+                        appendedTurns: turnPlan.delta.length
+                    });
+                } else {
+                    if (resolvedTurn.entry?.sessionId) {
+                        await registry.discard({ key: conversationKey });
+                    }
+                    sessionId = await createSession(toolControl);
+                    logDebug('Session created', {
+                        sessionId,
+                        historyRewritten: turnPlan.rewrite,
+                        derived: Boolean(derivedIdentity)
+                    });
+                }
+
+                const {
+                    parts,
+                    system: systemMsg,
+                    fullPromptText,
+                    lastUserMsg
+                } = await buildPromptParts(messages, externalToolRegistry, {
+                    includeFromIndex: turnPlan.deltaStartIndex
+                });
+                const systemWithGuard = buildSystemPrompt(
+                    [systemMsg, externalToolContext.prompt].filter(Boolean).join('\n\n'),
+                    requestParams.reasoning_effort,
+                    toolMode,
+                    internalToolContext.allowedToolNames
+                );
+                if (!parts.length) {
+                    res.status(400).json({
+                        error: {
+                            message: 'messages must include at least one non-system text message'
+                        }
+                    });
+                    return;
+                }
+                logDebug('Request start', {
+                    model: `${pID}/${mID}`,
+                    stream: Boolean(stream),
+                    userMessages: messages.length,
+                    system: Boolean(systemMsg),
+                    lastUserLength: lastUserMsg?.length || 0,
+                    parts: parts.length,
+                    disableTools: DISABLE_TOOLS,
+                    toolMode,
+                    internalAllowedTools: internalToolContext.allowedToolNames,
+                    requestedInternalTools: internalToolContext.requestedAllowlist,
+                    deniedRequestedTools: internalToolContext.deniedRequestedTools,
+                    resolutionPath: internalToolContext.resolutionPath,
+                    resultingMode: internalToolContext.resultingMode
+                });
+
+                id = `chatcmpl-${crypto.randomUUID()}`;
+                keepaliveInterval = null;
+                let completionTokens = 0;
+                let reasoningTokens = 0;
+
+                // A reused session already holds the earlier turns; remember what
+                // exists now so neither polling nor the event stream can report an
+                // older answer as this turn's result. Without the snapshot the
+                // previous answer would be served as this turn's, so a failed read
+                // fails the turn instead of falling back to unfiltered polling.
+                if (turnPlan.reuse) {
+                    turnBaseline = resolvedTurn.baseline;
+                    if (!turnBaseline || !turnBaseline.ok) {
+                        await discardConversationEntry(conversationKey);
+                        res.status(503).json(sessionStateUnavailableBody());
+                        return;
+                    }
+                }
+
+                // Append a short contract reminder as the last part so the model
+                // sees it immediately before generating. With the contract only in
+                // the 16KB+ system prompt it gets buried; position matters a lot for
+                // compliance. deepseek-v4-flash-free: 50% → 100% call rate.
+                /**
+                 * @param {Array<Record<string, unknown>>} builtParts Parts built for the turn.
+                 * @returns {Array<Record<string, unknown>>} Parts with the reminder appended.
+                 */
+                const withToolReminder = (builtParts) =>
+                    externalToolContext.reminder
+                        ? [...builtParts, { type: 'text', text: externalToolContext.reminder }]
+                        : builtParts;
+
+                // Retrying rotates to an empty session, which needs the whole
+                // history again: the delta window only makes sense for the session
+                // that already holds the earlier turns.
+                const rebuildPromptPartsForNewSession = async () => {
+                    const rebuilt = await buildPromptParts(messages, externalToolRegistry, {
+                        includeFromIndex: 0
+                    });
+                    if (rebuilt.parts.length) {
+                        promptParams.body.parts = withToolReminder(rebuilt.parts);
+                    }
+                };
+
+                /** @type {PromptParams} */
+                const promptParams = {
+                    path: { id: sessionId },
+                    body: {
+                        model: { providerID: pID, modelID: mID },
+                        system: systemWithGuard,
+                        parts: withToolReminder(parts),
+                        ...(requestParams.max_tokens && { max_tokens: requestParams.max_tokens }),
+                        ...(requestParams.temperature !== undefined && {
+                            temperature: requestParams.temperature
+                        }),
+                        ...(requestParams.top_p !== undefined && { top_p: requestParams.top_p }),
+                        ...(requestParams.stop && { stop: requestParams.stop })
+                    }
+                };
+                const { toolOverrides } = toolControl;
+                if (toolOverrides && Object.keys(toolOverrides).length > 0) {
+                    promptParams.body.tools = toolOverrides;
+                }
+
+                const makeForcedChatToolCallRequester = () =>
+                    createForcedToolCallRequester({
+                        mode: externalToolChoice.mode,
+                        sessionId: /** @type {string} */ (sessionId),
+                        systemWithGuard,
+                        requiredTool:
+                            externalToolChoice.requiredTool || externalToolRegistry[0]?.namespacedName,
+                        providerID: pID,
+                        modelID: mID,
+                        baselineProvider: () => snapshotSessionState(/** @type {string} */ (sessionId)),
+                        toolOverrides,
+                        requestTimeoutMs: REQUEST_TIMEOUT_MS,
+                        signal: turnAbort.signal,
+                        forbidThinkBlock: true
+                    });
+                let requestForcedChatToolCall = makeForcedChatToolCallRequester();
+
+                res.setHeader('Content-Type', stream ? 'text/event-stream' : 'application/json');
+                res.setHeader('Cache-Control', 'no-cache');
+                res.setHeader('Connection', 'keep-alive');
+
+                if (stream) {
+                    const shouldStripStreamingToolMarkup = externalToolRegistry.length > 0;
+                    /** @type {ToolCallFilterWithFlush} */
+                    const filterContentDelta = /** @type {ToolCallFilterWithFlush} */ (
+                        createToolCallFilter({
+                            disableTools: DISABLE_TOOLS,
+                            forceStrip: shouldStripStreamingToolMarkup
+                        })
+                    );
+                    /** @type {ToolCallFilterWithFlush} */
+                    const filterReasoningDelta = /** @type {ToolCallFilterWithFlush} */ (
+                        createToolCallFilter({
+                            disableTools: DISABLE_TOOLS,
+                            forceStrip: shouldStripStreamingToolMarkup
+                        })
+                    );
+                    /** @type {ExternalToolCallParserWithFlush} */
+                    const parseContentToolCalls = /** @type {ExternalToolCallParserWithFlush} */ (
+                        createExternalToolCallStreamParser(externalToolRegistry)
+                    );
+                    /** @type {ExternalToolCallParserWithFlush} */
+                    const parseReasoningToolCalls = /** @type {ExternalToolCallParserWithFlush} */ (
+                        createExternalToolCallStreamParser(externalToolRegistry)
+                    );
+                    let streamedContent = '';
+                    let streamedReasoning = '';
+                    let rawStreamedContent = '';
+                    let rawStreamedReasoning = '';
+                    /** @type {import('../tools/contract.js').WireToolCall[]} */
+                    const streamedToolCalls = [];
+                    keepaliveInterval = null;
+                    completionTokens = 0;
+                    reasoningTokens = 0;
+
+                    const ensureKeepalive = () => {
+                        if (!keepaliveInterval) {
+                            keepaliveInterval = setInterval(() => {
+                                if (!res.destroyed) {
+                                    res.write(': keepalive\n\n');
+                                }
+                            }, 15000);
+                        }
+                    };
+                    ensureKeepalive();
+
+                    /**
+                     * @param {string} delta Text delta.
+                     * @param {boolean} [isReasoning] Whether the delta is reasoning text.
+                     * @returns {void}
+                     */
+                    const sendDelta = (delta, isReasoning = false) => {
+                        if (!delta) return;
+                        if (isReasoning) rawStreamedReasoning += delta;
+                        else rawStreamedContent += delta;
+                        const parsedDeltaToolCalls = isReasoning
+                            ? parseReasoningToolCalls(delta)
+                            : parseContentToolCalls(delta);
+                        parsedDeltaToolCalls.forEach((toolCall) => {
+                            streamedToolCalls.push(toolCall);
                             res.write(
                                 `data: ${JSON.stringify({
                                     id,
@@ -2738,220 +2368,523 @@ export function createTurnEngine({
                                     choices: [
                                         {
                                             index: 0,
-                                            delta: { tool_calls: toolCallDeltas },
+                                            delta: {
+                                                tool_calls: [
+                                                    {
+                                                        index: streamedToolCalls.length - 1,
+                                                        id: toolCall.id,
+                                                        type: 'function',
+                                                        function: {
+                                                            name: toolCall.function.name,
+                                                            arguments: toolCall.function.arguments
+                                                        }
+                                                    }
+                                                ]
+                                            },
                                             finish_reason: null
                                         }
                                     ]
                                 })}\n\n`
                             );
+                        });
+                        const filtered = isReasoning
+                            ? filterReasoningDelta(delta)
+                            : filterContentDelta(delta);
+                        if (!filtered) return;
+                        if (isReasoning) {
+                            streamedReasoning += filtered;
+                            reasoningTokens += Math.ceil(filtered.length / 4);
+                        } else {
+                            streamedContent += filtered;
+                            completionTokens += Math.ceil(filtered.length / 4);
+                        }
+                        // Reasoning and answer are streamed as separate fields so clients
+                        // that read `reasoning_content` (DeepSeek/Qwen-style) see the thinking
+                        // without it polluting `content`.
+                        const deltaField = isReasoning
+                            ? { reasoning_content: filtered }
+                            : { content: filtered };
+                        const chunk = {
+                            id,
+                            object: 'chat.completion.chunk',
+                            created: Math.floor(Date.now() / 1000),
+                            model: `${pID}/${mID}`,
+                            choices: [{ index: 0, delta: deltaField, finish_reason: null }]
+                        };
+                        res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                    };
+
+                    let collected = null;
+                    for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt += 1) {
+                        if (attempt > 1) {
+                            // Retry on a fresh session: the failed attempt left an errored
+                            // assistant message in the old one, and re-prompting the same
+                            // session would append a duplicate user turn to the context.
+                            // Safe to rotate because nothing has been streamed yet.
+                            try {
+                                await client.session.delete({ path: { id: sessionId } });
+                            } catch (e) {
+                                logDebug('Failed to delete retried session', {
+                                    sessionId,
+                                    error: /** @type {Error} */ (e).message
+                                });
+                            }
+                            sessionId = await createSession(toolControl);
+                            promptParams.path.id = sessionId;
+                            // The retry session is empty, so nothing from the old one
+                            // qualifies as this turn's answer, and it needs the full
+                            // history rather than the delta the old session got.
+                            turnBaseline = null;
+                            await rebuildPromptPartsForNewSession();
+                            requestForcedChatToolCall = makeForcedChatToolCallRequester();
+                            streamedContent = '';
+                            streamedReasoning = '';
+                            rawStreamedContent = '';
+                            rawStreamedReasoning = '';
+                            streamedToolCalls.length = 0;
+                            completionTokens = 0;
+                            reasoningTokens = 0;
+                            await sleep(RETRY_BACKOFF_BASE_MS * attempt);
+                        }
+                        try {
+                            const collectPromise = collectFromEvents(
+                                sessionId,
+                                REQUEST_TIMEOUT_MS,
+                                sendDelta,
+                                EVENT_FIRST_DELTA_TIMEOUT_MS,
+                                EVENT_IDLE_TIMEOUT_MS,
+                                turnBaseline,
+                                turnAbort.signal
+                            );
+                            /** @type {Promise<CollectedTurn>} */
+                            const safeCollect = collectPromise.catch((err) => ({ __error: err }));
+                            client.session
+                                .prompt(promptParams)
+                                .catch((/** @type {Error} */ err) => logDebug('Prompt error:', err.message));
+                            collected = await safeCollect;
+                        } catch (e) {
+                            logDebug('Stream error:', /** @type {Error} */ (e).message);
                         }
 
-                        if (keepaliveInterval) clearInterval(keepaliveInterval);
+                        const attemptError = collected?.error || collected?.__error || null;
+                        const nothingStreamed =
+                            !rawStreamedContent && !rawStreamedReasoning && streamedToolCalls.length === 0;
+                        if (
+                            attemptError &&
+                            nothingStreamed &&
+                            attempt < RETRY_MAX_ATTEMPTS &&
+                            isTransientUpstreamError(attemptError)
+                        ) {
+                            logWarn(
+                                `[Proxy] Transient upstream error (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}), retrying:`,
+                                attemptError.data?.message ||
+                                    attemptError.message ||
+                                    attemptError.name ||
+                                    'unknown'
+                            );
+                            continue;
+                        }
+                        break;
+                    }
 
-                        const promptTokens = Math.ceil((fullPromptText || '').length / 4);
-                        const totalTokens = promptTokens + completionTokens + reasoningTokens;
+                    if (collected?.clientClosed) {
+                        logDebug('Client closed the stream; ending the turn', { sessionId });
+                        return;
+                    }
 
+                    if (collected && collected.__error) {
+                        logDebug('SSE collect error, falling back to polling', {
+                            sessionId,
+                            error: collected.__error?.message
+                        });
+                        const { content, reasoning, error } = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
+                        );
+                        if (error && !content && !reasoning) {
+                            sendDelta(
+                                `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
+                            );
+                        } else {
+                            if (reasoning) sendDelta(reasoning, true);
+                            if (content) sendDelta(content, false);
+                        }
+                    } else if (collected && collected.noData) {
+                        logDebug('Fallback to polling (stream)', { sessionId });
+                        const { content, reasoning, error } = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
+                        );
+                        if (error && !content && !reasoning) {
+                            sendDelta(
+                                `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
+                            );
+                        } else {
+                            if (reasoning) sendDelta(reasoning, true);
+                            if (content) sendDelta(content, false);
+                        }
+                    } else if (collected && collected.idleTimeout) {
+                        logDebug('SSE idle timeout, polling for completion', { sessionId });
+                        const { content, reasoning, error } = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
+                        );
+                        if (error && !content && !reasoning) {
+                            sendDelta(
+                                `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
+                            );
+                        } else {
+                            const remainingReasoning =
+                                reasoning && reasoning.startsWith(rawStreamedReasoning)
+                                    ? reasoning.slice(rawStreamedReasoning.length)
+                                    : reasoning;
+                            const remainingContent =
+                                content && content.startsWith(rawStreamedContent)
+                                    ? content.slice(rawStreamedContent.length)
+                                    : content;
+                            if (remainingReasoning) sendDelta(remainingReasoning, true);
+                            if (remainingContent) sendDelta(remainingContent, false);
+                        }
+                    }
+
+                    if (
+                        collected &&
+                        !streamedContent &&
+                        !streamedReasoning &&
+                        (collected.reasoning || collected.content)
+                    ) {
+                        if (collected.reasoning) sendDelta(collected.reasoning, true);
+                        if (collected.content) sendDelta(collected.content, false);
+                    }
+
+                    if (!streamedContent && !streamedReasoning) {
+                        logDebug('SSE returned empty, falling back to polling', { sessionId });
+                        const { content, reasoning, error } = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
+                        );
+                        if (error && !content && !reasoning) {
+                            sendDelta(
+                                `[Proxy Error] ${error.name || 'OpenCodeError'}: ${error.data?.message || error.message || 'Unknown error'}`
+                            );
+                        } else {
+                            if (reasoning) sendDelta(reasoning, true);
+                            if (content) sendDelta(content, false);
+                        }
+                    } else if (streamedReasoning && !streamedContent) {
+                        // Reconciliation for reasoning models: the reasoning streamed but the
+                        // answer text never arrived because every delta was tagged as reasoning
+                        // (issue #9). The message snapshot separates the two correctly, so
+                        // recover the missing answer from it instead of returning empty content.
+                        logDebug('Reasoning streamed but no content, reconciling from snapshot', {
+                            sessionId
+                        });
+                        const snapshot = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
+                        ).catch(() => null);
+                        if (snapshot && snapshot.content) {
+                            const remainingContent = rawStreamedContent
+                                ? snapshot.content.slice(rawStreamedContent.length)
+                                : snapshot.content;
+                            if (remainingContent) sendDelta(remainingContent, false);
+                        }
+                    }
+
+                    // Flush held buffers from the stream parsers and filters before final batch parse.
+                    const flushedReasoningCalls = parseReasoningToolCalls.flush
+                        ? parseReasoningToolCalls.flush()
+                        : [];
+                    const flushedContentCalls = parseContentToolCalls.flush
+                        ? parseContentToolCalls.flush()
+                        : [];
+                    const flushedReasoningText = filterReasoningDelta.flush
+                        ? filterReasoningDelta.flush()
+                        : '';
+                    const flushedContentText = filterContentDelta.flush ? filterContentDelta.flush() : '';
+                    const finalReasoningText = rawStreamedReasoning + flushedReasoningText;
+                    const finalContentText = rawStreamedContent + flushedContentText;
+
+                    // Parse each channel, then retry on the two joined. Models sometimes open a
+                    // block in reasoning and close it in content, leaving neither channel with a
+                    // complete block. The joined retry only runs when nothing was found, so a
+                    // block contained in one channel is never counted twice.
+                    const parseStreamedToolCalls = () => {
+                        if (externalToolRegistry.length === 0) return [];
+                        const perChannel = [
+                            ...flushedReasoningCalls,
+                            ...flushedContentCalls,
+                            ...parseExternalToolCallsFromText(
+                                externalToolRegistry,
+                                finalReasoningText,
+                                finalContentText
+                            )
+                        ];
+                        if (perChannel.length > 0) return perChannel;
+                        return parseExternalToolCallsFromText(
+                            externalToolRegistry,
+                            finalReasoningText + finalContentText
+                        );
+                    };
+
+                    let parsedToolCalls =
+                        streamedToolCalls.length > 0 ? streamedToolCalls : parseStreamedToolCalls();
+                    if (parsedToolCalls.length === 0 && externalToolChoice.mode === 'required') {
+                        const forcedResponse = await requestForcedChatToolCall();
+                        if (forcedResponse) {
+                            parsedToolCalls = parseExternalToolCallsFromText(
+                                externalToolRegistry,
+                                forcedResponse.reasoning,
+                                forcedResponse.content
+                            );
+                        }
+                    }
+                    const { validCalls: validatedStreamedToolCalls } = finalizeValidatedToolCalls(
+                        parsedToolCalls,
+                        externalToolRegistry
+                    );
+                    const finalStreamedToolCalls = validatedStreamedToolCalls;
+                    if (finalStreamedToolCalls.length > 0 && streamedToolCalls.length === 0) {
+                        const toolCallDeltas = finalStreamedToolCalls.map((toolCall, index) => ({
+                            index,
+                            id: toolCall.id,
+                            type: 'function',
+                            function: {
+                                name: toolCall.function.name,
+                                arguments: toolCall.function.arguments
+                            }
+                        }));
                         res.write(
                             `data: ${JSON.stringify({
                                 id,
+                                object: 'chat.completion.chunk',
+                                created: Math.floor(Date.now() / 1000),
+                                model: `${pID}/${mID}`,
                                 choices: [
                                     {
                                         index: 0,
-                                        delta: {},
-                                        finish_reason:
-                                            finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
+                                        delta: { tool_calls: toolCallDeltas },
+                                        finish_reason: null
                                     }
-                                ],
-                                usage: {
-                                    prompt_tokens: promptTokens,
-                                    completion_tokens: completionTokens + reasoningTokens,
-                                    total_tokens: totalTokens,
-                                    completion_tokens_details: {
-                                        reasoning_tokens: reasoningTokens
-                                    }
-                                }
+                                ]
                             })}\n\n`
                         );
-                        storeConversationEntry(conversationKey, {
-                            sessionId,
-                            sentCount: turnPlan?.sentCount,
-                            sentDigest: turnPlan?.sentDigest,
-                            replyText: streamedContent || null,
-                            startKey: derivedIdentity?.startKey || null
-                        });
-                        res.write('data: [DONE]\n\n');
-                        res.end();
-                    } else {
-                        let content = '';
-                        let reasoning = '';
-                        let error = null;
-                        for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt += 1) {
-                            if (attempt > 1) {
-                                // Retry on a fresh session: the failed attempt left an errored
-                                // assistant message in the old one, and re-prompting the same
-                                // session would append a duplicate user turn to the context.
-                                try {
-                                    await client.session.delete({ path: { id: sessionId } });
-                                } catch (e) {
-                                    logDebug('Failed to delete retried session', {
-                                        sessionId,
-                                        error: /** @type {Error} */ (e).message
-                                    });
-                                }
-                                sessionId = await createSession(toolControl);
-                                promptParams.path.id = sessionId;
-                                // The retry session is empty, so nothing from the old one
-                                // qualifies as this turn's answer, and it needs the full
-                                // history rather than the delta the old session got.
-                                turnBaseline = null;
-                                await rebuildPromptPartsForNewSession();
-                                requestForcedChatToolCall = makeForcedChatToolCallRequester();
-                                await sleep(RETRY_BACKOFF_BASE_MS * attempt);
-                            }
-                            const attemptStart = Date.now();
-                            await promptWithTimeout(promptParams, REQUEST_TIMEOUT_MS, turnAbort.signal);
-                            logDebug('Prompt sent', { sessionId, ms: Date.now() - attemptStart, attempt });
-                            const collected = await pollForAssistantResponse(
-                                sessionId,
-                                REQUEST_TIMEOUT_MS,
-                                DEFAULT_POLL_INTERVAL_MS,
-                                turnBaseline
-                            );
-                            content = collected.content || '';
-                            reasoning = collected.reasoning || '';
-                            error = collected.error || null;
-                            // Bounded retry for upstream throttling mislabeled as billing
-                            // errors (401 CreditsError etc.); only when nothing usable was
-                            // produced, so real failures still surface after RETRY_MAX_ATTEMPTS.
-                            if (
-                                error &&
-                                !content &&
-                                !reasoning &&
-                                attempt < RETRY_MAX_ATTEMPTS &&
-                                isTransientUpstreamError(error)
-                            ) {
-                                logWarn(
-                                    `[Proxy] Transient upstream error (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}), retrying:`,
-                                    error.data?.message || error.message || error.name || 'unknown'
-                                );
-                                continue;
-                            }
-                            break;
-                        }
-                        if (error && !content && !reasoning) {
-                            // Nothing usable came back, and the session is left holding a
-                            // failed turn: close it so the conversation starts clean next
-                            // time instead of leaking a full-history session nothing sweeps.
-                            await discardTurnState(conversationKey, sessionId);
-                            return res.status(502).json({
-                                error: {
-                                    message:
-                                        error.data?.message || error.message || 'OpenCode provider error',
-                                    type: error.name || 'OpenCodeError'
-                                }
-                            });
-                        }
-                        let parsedToolCalls =
-                            externalToolRegistry.length > 0
-                                ? parseExternalToolCallsFromText(externalToolRegistry, reasoning, content)
-                                : [];
-                        if (parsedToolCalls.length === 0 && externalToolChoice.mode === 'required') {
-                            const forcedResponse = await requestForcedChatToolCall();
-                            if (forcedResponse) {
-                                content = forcedResponse.content || content;
-                                reasoning = forcedResponse.reasoning || reasoning;
-                                parsedToolCalls = parseExternalToolCallsFromText(
-                                    externalToolRegistry,
-                                    reasoning,
-                                    content
-                                );
-                            }
-                        }
-                        const { validCalls: validatedToolCalls } = finalizeValidatedToolCalls(
-                            parsedToolCalls,
-                            externalToolRegistry
-                        );
-                        const safeContent = stripFunctionCallMarkup(stripFunctionCalls(content));
-                        const safeReasoning = stripFunctionCallMarkup(stripFunctionCalls(reasoning));
+                    }
 
-                        const promptTokens = Math.ceil((fullPromptText || '').length / 4);
-                        const completionTokensCalc = Math.ceil((content || '').length / 4);
-                        const reasoningTokensCalc = Math.ceil((reasoning || '').length / 4);
-                        const totalTokens = promptTokens + completionTokensCalc + reasoningTokensCalc;
+                    if (keepaliveInterval) clearInterval(keepaliveInterval);
 
-                        const publicValidatedToolCalls = toPublicToolCalls(validatedToolCalls);
-                        // Reasoning is emitted in its own `reasoning_content` field so clients
-                        // can surface the thinking without it being wrapped in <think> tags and
-                        // mixed into the answer `content`.
-                        /** @type {AssistantMessageOut} */
-                        const assistantMessage = {
-                            role: 'assistant',
-                            content: publicValidatedToolCalls.length > 0 ? safeContent || null : safeContent,
-                            ...(safeReasoning ? { reasoning_content: safeReasoning } : {})
-                        };
-                        if (publicValidatedToolCalls.length > 0) {
-                            assistantMessage.tool_calls = publicValidatedToolCalls;
-                        }
+                    const promptTokens = Math.ceil((fullPromptText || '').length / 4);
+                    const totalTokens = promptTokens + completionTokens + reasoningTokens;
 
-                        storeConversationEntry(conversationKey, {
-                            sessionId,
-                            sentCount: turnPlan?.sentCount,
-                            sentDigest: turnPlan?.sentDigest,
-                            replyText: safeContent || '',
-                            startKey: derivedIdentity?.startKey || null
-                        });
-
-                        res.json({
-                            id: `chatcmpl-${crypto.randomUUID()}`,
-                            object: 'chat.completion',
-                            created: Math.floor(Date.now() / 1000),
-                            model: `${pID}/${mID}`,
+                    res.write(
+                        `data: ${JSON.stringify({
+                            id,
                             choices: [
                                 {
                                     index: 0,
-                                    message: assistantMessage,
-                                    finish_reason: publicValidatedToolCalls.length > 0 ? 'tool_calls' : 'stop'
+                                    delta: {},
+                                    finish_reason: finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
                                 }
                             ],
                             usage: {
                                 prompt_tokens: promptTokens,
-                                completion_tokens: completionTokensCalc + reasoningTokensCalc,
+                                completion_tokens: completionTokens + reasoningTokens,
                                 total_tokens: totalTokens,
                                 completion_tokens_details: {
-                                    reasoning_tokens: reasoningTokensCalc
+                                    reasoning_tokens: reasoningTokens
                                 }
                             }
-                        });
-                    }
-                } catch (error) {
-                    logError('[Proxy] API Error:', /** @type {UpstreamErrorLike} */ (error).message);
-                    logError('[Proxy] Error details:', error);
-
-                    if (keepaliveInterval) clearInterval(keepaliveInterval);
-
-                    if (res.writableEnded || res.destroyed) {
-                        // The client is gone; there is nobody to report to.
-                    } else if (!res.headersSent) {
-                        const transformed = transformUpstreamError(/** @type {UpstreamErrorLike} */ (error));
-                        res.status(transformed.statusCode).json({ error: transformed.error });
-                    } else {
-                        res.write(
-                            `data: ${JSON.stringify({ error: { message: /** @type {UpstreamErrorLike} */ (error).message } })}\n\n`
+                        })}\n\n`
+                    );
+                    storeConversationEntry(conversationKey, {
+                        sessionId,
+                        sentCount: turnPlan?.sentCount,
+                        sentDigest: turnPlan?.sentDigest,
+                        replyText: streamedContent || null,
+                        startKey: derivedIdentity?.startKey || null
+                    });
+                    res.write('data: [DONE]\n\n');
+                    res.end();
+                } else {
+                    let content = '';
+                    let reasoning = '';
+                    let error = null;
+                    for (let attempt = 1; attempt <= RETRY_MAX_ATTEMPTS; attempt += 1) {
+                        if (attempt > 1) {
+                            // Retry on a fresh session: the failed attempt left an errored
+                            // assistant message in the old one, and re-prompting the same
+                            // session would append a duplicate user turn to the context.
+                            try {
+                                await client.session.delete({ path: { id: sessionId } });
+                            } catch (e) {
+                                logDebug('Failed to delete retried session', {
+                                    sessionId,
+                                    error: /** @type {Error} */ (e).message
+                                });
+                            }
+                            sessionId = await createSession(toolControl);
+                            promptParams.path.id = sessionId;
+                            // The retry session is empty, so nothing from the old one
+                            // qualifies as this turn's answer, and it needs the full
+                            // history rather than the delta the old session got.
+                            turnBaseline = null;
+                            await rebuildPromptPartsForNewSession();
+                            requestForcedChatToolCall = makeForcedChatToolCallRequester();
+                            await sleep(RETRY_BACKOFF_BASE_MS * attempt);
+                        }
+                        const attemptStart = Date.now();
+                        await promptWithTimeout(promptParams, REQUEST_TIMEOUT_MS, turnAbort.signal);
+                        logDebug('Prompt sent', { sessionId, ms: Date.now() - attemptStart, attempt });
+                        const collected = await pollForAssistantResponse(
+                            sessionId,
+                            REQUEST_TIMEOUT_MS,
+                            DEFAULT_POLL_INTERVAL_MS,
+                            turnBaseline
                         );
-                        res.end();
+                        content = collected.content || '';
+                        reasoning = collected.reasoning || '';
+                        error = collected.error || null;
+                        // Bounded retry for upstream throttling mislabeled as billing
+                        // errors (401 CreditsError etc.); only when nothing usable was
+                        // produced, so real failures still surface after RETRY_MAX_ATTEMPTS.
+                        if (
+                            error &&
+                            !content &&
+                            !reasoning &&
+                            attempt < RETRY_MAX_ATTEMPTS &&
+                            isTransientUpstreamError(error)
+                        ) {
+                            logWarn(
+                                `[Proxy] Transient upstream error (attempt ${attempt}/${RETRY_MAX_ATTEMPTS}), retrying:`,
+                                error.data?.message || error.message || error.name || 'unknown'
+                            );
+                            continue;
+                        }
+                        break;
                     }
-                    // The backend session only has a failed turn left in it, so the
-                    // conversation must not be pointed at it any more.
-                    await discardTurnState(conversationKey, sessionId);
-                } finally {
-                    if (typeof releaseConversationLock === 'function') releaseConversationLock();
-                    if (typeof keepaliveInterval !== 'undefined' && keepaliveInterval)
-                        clearInterval(keepaliveInterval);
-                    if (eventStream && eventStream.close) {
-                        eventStream.close();
+                    if (error && !content && !reasoning) {
+                        // Nothing usable came back, and the session is left holding a
+                        // failed turn: close it so the conversation starts clean next
+                        // time instead of leaking a full-history session nothing sweeps.
+                        await discardTurnState(conversationKey, sessionId);
+                        res.status(502).json({
+                            error: {
+                                message: error.data?.message || error.message || 'OpenCode provider error',
+                                type: error.name || 'OpenCodeError'
+                            }
+                        });
+                        return;
                     }
+                    let parsedToolCalls =
+                        externalToolRegistry.length > 0
+                            ? parseExternalToolCallsFromText(externalToolRegistry, reasoning, content)
+                            : [];
+                    if (parsedToolCalls.length === 0 && externalToolChoice.mode === 'required') {
+                        const forcedResponse = await requestForcedChatToolCall();
+                        if (forcedResponse) {
+                            content = forcedResponse.content || content;
+                            reasoning = forcedResponse.reasoning || reasoning;
+                            parsedToolCalls = parseExternalToolCallsFromText(
+                                externalToolRegistry,
+                                reasoning,
+                                content
+                            );
+                        }
+                    }
+                    const { validCalls: validatedToolCalls } = finalizeValidatedToolCalls(
+                        parsedToolCalls,
+                        externalToolRegistry
+                    );
+                    const safeContent = stripFunctionCallMarkup(stripFunctionCalls(content));
+                    const safeReasoning = stripFunctionCallMarkup(stripFunctionCalls(reasoning));
+
+                    const promptTokens = Math.ceil((fullPromptText || '').length / 4);
+                    const completionTokensCalc = Math.ceil((content || '').length / 4);
+                    const reasoningTokensCalc = Math.ceil((reasoning || '').length / 4);
+                    const totalTokens = promptTokens + completionTokensCalc + reasoningTokensCalc;
+
+                    const publicValidatedToolCalls = toPublicToolCalls(validatedToolCalls);
+                    // Reasoning is emitted in its own `reasoning_content` field so clients
+                    // can surface the thinking without it being wrapped in <think> tags and
+                    // mixed into the answer `content`.
+                    /** @type {AssistantMessageOut} */
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: publicValidatedToolCalls.length > 0 ? safeContent || null : safeContent,
+                        ...(safeReasoning ? { reasoning_content: safeReasoning } : {})
+                    };
+                    if (publicValidatedToolCalls.length > 0) {
+                        assistantMessage.tool_calls = publicValidatedToolCalls;
+                    }
+
+                    storeConversationEntry(conversationKey, {
+                        sessionId,
+                        sentCount: turnPlan?.sentCount,
+                        sentDigest: turnPlan?.sentDigest,
+                        replyText: safeContent || '',
+                        startKey: derivedIdentity?.startKey || null
+                    });
+
+                    res.json({
+                        id: `chatcmpl-${crypto.randomUUID()}`,
+                        object: 'chat.completion',
+                        created: Math.floor(Date.now() / 1000),
+                        model: `${pID}/${mID}`,
+                        choices: [
+                            {
+                                index: 0,
+                                message: assistantMessage,
+                                finish_reason: publicValidatedToolCalls.length > 0 ? 'tool_calls' : 'stop'
+                            }
+                        ],
+                        usage: {
+                            prompt_tokens: promptTokens,
+                            completion_tokens: completionTokensCalc + reasoningTokensCalc,
+                            total_tokens: totalTokens,
+                            completion_tokens_details: {
+                                reasoning_tokens: reasoningTokensCalc
+                            }
+                        }
+                    });
                 }
-            }, REQUEST_TIMEOUT_MS + 20000);
+            } catch (error) {
+                logError('[Proxy] API Error:', /** @type {UpstreamErrorLike} */ (error).message);
+                logError('[Proxy] Error details:', error);
+
+                if (keepaliveInterval) clearInterval(keepaliveInterval);
+
+                if (res.writableEnded || res.destroyed) {
+                    // The client is gone; there is nobody to report to.
+                } else if (!res.headersSent) {
+                    const transformed = transformUpstreamError(/** @type {UpstreamErrorLike} */ (error));
+                    res.status(transformed.statusCode).json({ error: transformed.error });
+                } else {
+                    res.write(
+                        `data: ${JSON.stringify({ error: { message: /** @type {UpstreamErrorLike} */ (error).message } })}\n\n`
+                    );
+                    res.end();
+                }
+                // The backend session only has a failed turn left in it, so the
+                // conversation must not be pointed at it any more.
+                await discardTurnState(conversationKey, sessionId);
+            } finally {
+                if (typeof releaseConversationLock === 'function') releaseConversationLock();
+                if (typeof keepaliveInterval !== 'undefined' && keepaliveInterval)
+                    clearInterval(keepaliveInterval);
+                if (eventStream && eventStream.close) {
+                    eventStream.close();
+                }
+            }
         } catch (error) {
             logError('[Proxy] Request Handler Error:', /** @type {UpstreamErrorLike} */ (error).message);
             if (!res.headersSent) {
@@ -4213,113 +4146,4 @@ export function createTurnEngine({
     };
 }
 
-/**
- * `previous_response_id` chain index.
- *
- * A response id maps to the runtime session that produced it for 30 minutes, so a
- * stateful client can continue a conversation without resending history. The index
- * also tells the conversation layer whether a session is still referenced by a live
- * chain, which keeps that session from being closed behind the chain's back.
- *
- * @param {object} [options] Index options.
- * @param {() => number} [options.clock] Clock, injectable for tests.
- * @param {number} [options.ttlMs] Entry lifetime in milliseconds.
- * @param {(sessionId: string) => Promise<void>} [options.deleteSession] Closer for
- *   expired sessions that nothing else references.
- * @param {any} [options.logger] Logger dependency.
- * @returns {{
- *     get: (responseId: string) => ({sessionId: string, model: string|undefined}|null),
- *     store: (responseId: string, sessionId: string, model?: string) => void,
- *     isHeld: (sessionId: string) => boolean,
- *     sweep: () => Promise<void>,
- *     size: () => number
- * }} The index.
- */
-export function createResponseChainIndex({
-    clock = () => Date.now(),
-    ttlMs = 30 * 60 * 1000,
-    deleteSession = async () => {},
-    logger = null
-} = {}) {
-    /** @type {Map<string, {sessionId: string, model: string|undefined, expiresAt: number}>} */
-    const entries = new Map();
-
-    /**
-     * @param {string} responseId Response id.
-     * @returns {{sessionId: string, model: string|undefined}|null} Live entry, or null when absent/expired.
-     */
-    const get = (responseId) => {
-        const state = entries.get(responseId);
-        if (!state) return null;
-        if (state.expiresAt <= clock()) {
-            entries.delete(responseId);
-            return null;
-        }
-        return state;
-    };
-
-    return {
-        get,
-        /**
-         * @param {string} responseId Response id.
-         * @param {string} sessionId Session that produced it.
-         * @param {string} [model] Model name.
-         * @returns {void}
-         */
-        store(responseId, sessionId, model) {
-            if (!responseId || !sessionId) return;
-            entries.set(responseId, { sessionId, model, expiresAt: clock() + ttlMs });
-        },
-        /**
-         * @param {string} sessionId Session id.
-         * @returns {boolean} True while a live chain references the session.
-         */
-        isHeld(sessionId) {
-            if (!sessionId) return false;
-            for (const [id, state] of entries.entries()) {
-                if (state.expiresAt <= clock()) {
-                    entries.delete(id);
-                    continue;
-                }
-                if (state.sessionId === sessionId) return true;
-            }
-            return false;
-        },
-        /**
-         * Drop expired entries and close the sessions nothing references any more.
-         *
-         * @returns {Promise<void>}
-         */
-        async sweep() {
-            const now = clock();
-            const expired = [];
-            for (const [id, state] of entries.entries()) {
-                if (state.expiresAt <= now) {
-                    expired.push(state);
-                    entries.delete(id);
-                }
-            }
-            if (!expired.length) return;
-            for (const state of expired) {
-                if (
-                    entries.size &&
-                    [...entries.values()].some((live) => live.sessionId === state.sessionId)
-                ) {
-                    continue;
-                }
-                try {
-                    await deleteSession(state.sessionId);
-                } catch (error) {
-                    logger?.debug?.('Failed to delete expired response session', {
-                        sessionId: state.sessionId,
-                        error: error instanceof Error ? error.message : String(error)
-                    });
-                }
-            }
-        },
-        /** @returns {number} Number of tracked chains. */
-        size() {
-            return entries.size;
-        }
-    };
-}
+export { createResponseChainIndex } from '../conversation/response-chains.js';

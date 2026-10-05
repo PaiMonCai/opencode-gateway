@@ -124,7 +124,7 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | (空) | 请求未带 `tools` 时放行的内置工具，逗号分隔 |
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` 或 `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `false` | 忽略传入的 system prompt |
-| `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS` | `false` | 自动清理会话存储 |
+| `OPENCODE_PROXY_STORAGE_CLEANUP` | `off` | 会话存储清理计划：`off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `true` | 客户端带会话标识头时复用同一后端会话 |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `1800000` | 会话空闲多久后关闭（毫秒） |
 | `OPENCODE_PROXY_SESSION_HEADERS` | (见文档) | 识别会话身份的请求头，逗号分隔 |
@@ -132,9 +132,9 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 | `OPENCODE_PROXY_DIRECT` | `true` | Go/付费 Zen 模型直连 OpenCode 端点（免费档仍走 runtime） |
 | `OPENCODE_PROXY_DIRECT_GO_URL` | `https://opencode.ai/zen/go/v1` | Go 订阅端点 |
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `https://opencode.ai/zen/v1` | 付费 Zen 端点 |
-| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `true` | 免费档模型仍走 runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `true` | 直连被拒时回退 runtime |
 | `OPENCODE_USE_ISOLATED_HOME` | `false` | 使用隔离的 OpenCode 配置目录 |
+| `OPENCODE_PROXY_OPS` | `health` | 运维端点：`off` / `health` / `full` |
 | `OPENCODE_PROXY_DEBUG` | `false` | 调试日志 |
 
 > 📄 完整配置见 [配置详解](./docs/zh/configuration.md)
@@ -158,7 +158,7 @@ OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
-OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
+OPENCODE_PROXY_STORAGE_CLEANUP=daily
 ```
 
 ## 🔌 API 端点
@@ -166,8 +166,8 @@ OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
 | 方法 | 路径 | 说明 |
 |:-----|:-----|:-----|
 | `GET` | `/health` | 健康检查 |
-| `GET` | `/health/details` | 结构化诊断（可配置开关/鉴权） |
-| `GET` | `/metrics` | Prometheus 指标（可配置开关/鉴权） |
+| `GET` | `/health/details` | 结构化诊断（由 `OPENCODE_PROXY_OPS` 控制，始终要求 Bearer） |
+| `GET` | `/metrics` | Prometheus 指标（`OPENCODE_PROXY_OPS=full`，始终要求 Bearer） |
 | `GET` | `/v1/models` | 模型列表 |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |

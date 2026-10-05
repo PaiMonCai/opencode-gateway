@@ -24,7 +24,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # The managed backend is the OpenCode CLI (OPENCODE_PATH=opencode).
-RUN npm install --global --no-audit --no-fund opencode-ai \
+# Keep the runtime version aligned with @opencode-ai/sdk and the direct-client
+# fingerprint. Runtime/plugin contracts can change between OpenCode releases, so
+# rebuilding the same gateway commit must not silently pull a newer CLI.
+ARG OPENCODE_VERSION=1.18.34
+RUN npm install --global --no-audit --no-fund "opencode-ai@${OPENCODE_VERSION}" \
     && npm cache clean --force
 
 WORKDIR /home/node/project
@@ -59,9 +63,8 @@ ENV OPENCODE_PROXY_PORT=10000 \
     OPENCODE_USE_ISOLATED_HOME=false \
     OPENCODE_PROXY_PROMPT_MODE=standard \
     OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=false \
-    OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=false \
-    OPENCODE_PROXY_CLEANUP_INTERVAL_MS=43200000 \
-    OPENCODE_PROXY_CLEANUP_MAX_AGE_MS=86400000 \
+    OPENCODE_PROXY_STORAGE_CLEANUP=off \
+    OPENCODE_PROXY_OPS=health \
     OPENCODE_PROXY_REQUEST_TIMEOUT_MS=180000 \
     OPENCODE_PROXY_DEBUG=false \
     PUID=1000 \

@@ -141,9 +141,7 @@ test('[FINDING-11 fixed] an unexpected runtime failure answers the documented 50
 
 describe('§6 conversation lock', () => {
     test('a second concurrent turn on the same conversation answers 503 conversation_busy', async () => {
-        // Verified on `/v1/responses`: chat turns are globally serialized by the
-        // engine's module-level mutex (FINDING-10), so two chat requests can never
-        // compete for one conversation lock.
+        // Verify the Responses surface directly; Chat has a matching case below.
         const { http } = await shortLock(80, {
             env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '600' },
             runtime: HANGING_RUNTIME
@@ -171,37 +169,71 @@ describe('§6 conversation lock', () => {
         expect(firstRes.status).toBe(504);
     }, 20_000);
 
-    test('[PARITY-DOCUMENTED] chat turns are serialized process-wide (documented throughput limit)', async () => {
-        // Verified as an existing, now-documented behaviour rather than a defect:
-        // `handleChat` runs every turn under a module-level mutex (`lock`,
-        // src/routes/engine.js:583/1828), so a slow chat turn delays chat traffic
-        // for other conversations too, and `503 conversation_busy` is observable
-        // on the responses surface instead (api-reference 503 section and
-        // BEHAVIOUR-SPEC §1 document exactly this; verified by the lead's
-        // ruling). Reported as a known throughput limitation with the change
-        // preconditions, not as a rewrite regression.
+    test('chat turns for different conversations run independently', async () => {
         const { http } = await shortLock(80, {
-            env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '700' },
-            runtime: HANGING_RUNTIME
+            env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '1000' },
+            runtime: {
+                reply: async (args) => {
+                    const promptText = (args?.body?.parts || [])
+                        .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+                        .join('');
+                    if (promptText.includes('slow')) {
+                        await new Promise((resolve) => setTimeout(resolve, 350));
+                        return 'slow answer';
+                    }
+                    return 'fast answer';
+                }
+            }
         });
+
         const slow = http
             .post('/v1/chat/completions')
             .set('x-opencode-session', 'conv-slow')
-            .send({ model: 'opencode/big-pickle', messages: [USER] })
+            .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'slow' }] })
             .then((response) => response);
-        await new Promise((resolve) => setTimeout(resolve, 60));
+        await new Promise((resolve) => setTimeout(resolve, 50));
 
         const otherStartedAt = Date.now();
         const other = await http
             .post('/v1/chat/completions')
             .set('x-opencode-session', 'conv-other')
-            .send({ model: 'opencode/big-pickle', messages: [USER] });
+            .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'fast' }] });
         const otherElapsed = Date.now() - otherStartedAt;
 
-        expect(other.status).toBe(504); // it ran and hit its own turn timeout
-        // Serialized: the second request could only start once the first ended.
-        expect(otherElapsed).toBeGreaterThan(400);
-        await slow;
+        expect(other.status).toBe(200);
+        expect(other.body.choices[0].message.content).toBe('fast answer');
+        expect(otherElapsed).toBeLessThan(250);
+
+        const slowResponse = await slow;
+        expect(slowResponse.status).toBe(200);
+        expect(slowResponse.body.choices[0].message.content).toBe('slow answer');
+    }, 20_000);
+
+    test('chat turns on the same conversation use the conversation lock', async () => {
+        const { http } = await shortLock(80, {
+            env: { OPENCODE_PROXY_REQUEST_TIMEOUT_MS: '600' },
+            runtime: HANGING_RUNTIME
+        });
+
+        const first = http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'conv-chat-busy')
+            .send({ model: 'opencode/big-pickle', messages: [USER] })
+            .then((response) => response);
+        await new Promise((resolve) => setTimeout(resolve, 60));
+
+        const second = await http
+            .post('/v1/chat/completions')
+            .set('x-opencode-session', 'conv-chat-busy')
+            .send({ model: 'opencode/big-pickle', messages: [USER] });
+
+        expect(second.status).toBe(503);
+        expect(second.body).toEqual({
+            error: { message: 'Conversation is busy with another request', type: 'conversation_busy' }
+        });
+
+        const firstRes = await first;
+        expect(firstRes.status).toBe(504);
     }, 20_000);
 
     test('a client disconnect releases the conversation lock', async () => {

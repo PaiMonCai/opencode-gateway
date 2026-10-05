@@ -195,7 +195,7 @@ Great, now answer the original request using the tool result.
 ### 503 Service Unavailable
 
 会话相关的两种 503：
-> **聊天面的串行性（既有行为）**：`/v1/chat/completions` 的每个回合都在进程级互斥锁内执行（沿用重写前实现），因此**不同会话的 chat 请求也会彼此排队**；`503 conversation_busy` 因此主要在 `/v1/responses` 面可观察到。排队等待上限为「请求超时 + 20 秒」。这是已知的吞吐限制，不是本次重写引入的回归；若需要 chat 面并发，属于后续的独立改造（需要先确认引擎共享状态与工具策略的并发安全性）。
+> **按会话串行**：`/v1/chat/completions` 与 `/v1/responses` 都只对同一 conversation key 串行化；不同会话可以并发执行。同一会话的锁等待超过上限时返回 `503 conversation_busy`。
 
 
 ```json

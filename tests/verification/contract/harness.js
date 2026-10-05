@@ -79,7 +79,7 @@ export function renderedHistory(messages) {
  *
  * @param {object} [options]
  * @param {object} [options.models] Provider → model map.
- * @param {string|((args: any, calls: any) => string)} [options.reply] Answer text.
+ * @param {string|((args: any, calls: any) => string|Promise<string>)} [options.reply] Answer text.
  * @param {string|((args: any, calls: any) => string)|null} [options.reasoning] Reasoning text.
  * @param {(args: any, calls: any) => Error|null} [options.promptError] Fail a prompt.
  * @param {() => AsyncIterable<object>} [options.eventStream] Event source factory.
@@ -145,7 +145,7 @@ export function createFakeRuntime({
                         text: typeof reasoning === 'function' ? reasoning(args, calls) : reasoning
                     });
                 }
-                const text = typeof reply === 'function' ? reply(args, calls) : reply;
+                const text = typeof reply === 'function' ? await reply(args, calls) : reply;
                 if (text) parts.push({ id: `prt-a${turn}`, type: 'text', text });
                 list.push({
                     info: {

@@ -227,7 +227,7 @@ OpenCode Zen 免费模型只接受工具列表与官方客户端一致的请求�
 ## 📊 健康诊断与指标
 
 - `/health` 始终是轻量健康检查。
-- `/health/details` 返回结构化诊断 JSON（`OPENCODE_HEALTH_DETAILS_ENABLED=false` 时返回 404，`OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH=true` 时要求认证）：
+- `/health/details` 在 `OPENCODE_PROXY_OPS=health|full` 时返回结构化诊断 JSON；该端点始终要求 Bearer 认证（`OPS=off` 时返回 404）：
 
 ```json
 {
@@ -255,7 +255,7 @@ OpenCode Zen 免费模型只接受工具列表与官方客户端一致的请求�
 }
 ```
 
-- `/metrics` 返回 Prometheus 文本格式（`OPENCODE_METRICS_ENABLED=false` 时返回 404）：
+- `/metrics` 在 `OPENCODE_PROXY_OPS=full` 时返回 Prometheus 文本格式，并始终要求 Bearer 认证；其他模式返回 404：
 
 ```text
 opencode_internal_tool_mode_requests_total{mode="external_bridge"}
@@ -284,7 +284,7 @@ OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
-OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
+OPENCODE_PROXY_STORAGE_CLEANUP=daily
 ```
 
 ### 本地开发

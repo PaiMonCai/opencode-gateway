@@ -252,7 +252,7 @@ When a request has no `tools`, `opencode.internal_allowed_tools` in the request 
 ## 📊 Health Diagnostics & Metrics
 
 - `/health` is always a lightweight check.
-- `/health/details` returns structured diagnostic JSON (`404` when `OPENCODE_HEALTH_DETAILS_ENABLED=false`, auth required when `OPENCODE_HEALTH_DETAILS_REQUIRE_AUTH=true`):
+- `/health/details` returns structured diagnostic JSON when `OPENCODE_PROXY_OPS=health|full`; it always requires Bearer authentication (`OPS=off` returns 404):
 
 ```json
 {
@@ -280,7 +280,7 @@ When a request has no `tools`, `opencode.internal_allowed_tools` in the request 
 }
 ```
 
-- `/metrics` returns Prometheus text format (`404` when `OPENCODE_METRICS_ENABLED=false`):
+- `/metrics` returns Prometheus text format only when `OPENCODE_PROXY_OPS=full` and always requires Bearer authentication; other modes return 404:
 
 ```text
 opencode_internal_tool_mode_requests_total{mode="external_bridge"}
@@ -309,7 +309,7 @@ OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
-OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
+OPENCODE_PROXY_STORAGE_CLEANUP=daily
 ```
 
 ### Local Development

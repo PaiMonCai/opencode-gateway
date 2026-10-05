@@ -83,7 +83,9 @@ export function createHttpLayer(options = {}) {
  * Install the HTTP edge middleware on an Express app.
  *
  * Order matters: CORS first (so preflights are answered before auth), then the
- * request context, then the body parsers, then auth. The error and 404 handlers
+ * request context and auth, then the body parsers. Authenticating before parsing
+ * prevents unauthenticated clients from consuming CPU/memory with large bodies.
+ * The error and 404 handlers
  * are returned rather than installed, because they must come last — after the
  * routes.
  *
@@ -95,8 +97,8 @@ export function installHttpLayer(app, options = {}) {
     const layer = createHttpLayer(options);
     app.use(layer.cors);
     app.use(layer.requestContext);
+    app.use(layer.auth);
     app.use(layer.jsonBody);
     app.use(layer.urlencodedBody);
-    app.use(layer.auth);
     return layer;
 }

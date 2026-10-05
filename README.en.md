@@ -117,11 +117,12 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | `OPENCODE_SERVER_PORT` | `10001` | Backend port (applies when `OPENCODE_SERVER_URL` is not set) |
 | `OPENCODE_SERVER_URL` | `http://127.0.0.1:10001` | Backend URL (may be unreachable in a direct-only deployment) |
 | `OPENCODE_ZEN_API_KEY` | (empty) | OpenCode account/subscription key: enables the direct path for Go and paid Zen, and is passed to the managed runtime |
+| `OPENCODE_PROXY_UPSTREAM_PROXY` | (empty) | Upstream egress proxy (`socks*://` or `http(s)://`); standard proxy env vars are lower-precedence fallbacks |
 | `OPENCODE_DISABLE_TOOLS` | `true` | Disable OpenCode built-in tools |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | (empty) | Built-ins allowed when a request has no `tools`, comma-separated |
 | `OPENCODE_PROXY_PROMPT_MODE` | `standard` | `standard` or `plugin-inject` |
 | `OPENCODE_PROXY_OMIT_SYSTEM_PROMPT` | `false` | Ignore the incoming system prompt |
-| `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS` | `false` | Auto-clean session storage |
+| `OPENCODE_PROXY_STORAGE_CLEANUP` | `off` | Conversation storage cleanup schedule: `off` / `hourly` / `daily` |
 | `OPENCODE_PROXY_SESSION_REUSE` | `true` | Reuse one backend session per client conversation header |
 | `OPENCODE_PROXY_SESSION_TTL_MS` | `1800000` | Close an idle conversation after this long (ms) |
 | `OPENCODE_PROXY_SESSION_HEADERS` | (see docs) | Conversation identity headers, comma-separated |
@@ -129,9 +130,9 @@ When the model calls tools, non-streaming responses return `message.tool_calls` 
 | `OPENCODE_PROXY_DIRECT` | `true` | Send Go / paid Zen models straight to OpenCode's endpoints (free tier stays on the runtime) |
 | `OPENCODE_PROXY_DIRECT_GO_URL` | `https://opencode.ai/zen/go/v1` | Go subscription endpoint |
 | `OPENCODE_PROXY_DIRECT_ZEN_URL` | `https://opencode.ai/zen/v1` | Paid Zen endpoint |
-| `OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME` | `true` | Keep free-tier models on the runtime |
 | `OPENCODE_PROXY_DIRECT_FALLBACK` | `true` | Fall back to the runtime when the direct upstream refuses |
 | `OPENCODE_USE_ISOLATED_HOME` | `false` | Use an isolated OpenCode config directory |
+| `OPENCODE_PROXY_OPS` | `health` | Operational endpoints: `off` / `health` / `full` |
 | `OPENCODE_PROXY_DEBUG` | `false` | Debug logging |
 
 > 📄 Full reference: [Configuration](./docs/en/configuration.md)
@@ -155,7 +156,7 @@ OPENCODE_DISABLE_TOOLS=true
 OPENCODE_INTERNAL_ALLOWED_TOOLS=web_fetch
 OPENCODE_PROXY_PROMPT_MODE=plugin-inject
 OPENCODE_PROXY_OMIT_SYSTEM_PROMPT=true
-OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
+OPENCODE_PROXY_STORAGE_CLEANUP=daily
 ```
 
 ## 🔌 API Endpoints
@@ -163,8 +164,8 @@ OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS=true
 | Method | Path | Description |
 |:-----|:-----|:-----|
 | `GET` | `/health` | Health check |
-| `GET` | `/health/details` | Structured diagnostics (toggle/auth configurable) |
-| `GET` | `/metrics` | Prometheus metrics (toggle/auth configurable) |
+| `GET` | `/health/details` | Structured diagnostics (controlled by `OPENCODE_PROXY_OPS`, Bearer always required) |
+| `GET` | `/metrics` | Prometheus metrics (`OPENCODE_PROXY_OPS=full`, Bearer always required) |
 | `GET` | `/v1/models` | Model list |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |
