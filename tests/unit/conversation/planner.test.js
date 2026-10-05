@@ -1,6 +1,7 @@
 import {
     canonicalMessageFingerprint,
     deliverableMessages,
+    hasDeliverablePromptContent,
     hashMessage,
     planConversationTurn,
     planPinnedTurn,
@@ -328,5 +329,43 @@ describe('echo observation (replyDigest)', () => {
         expect(logger.records).toEqual([]);
         // Options are observation only: the plan is identical without them.
         expect(planConversationTurn(storedEntry(history, 3), deliverable)).toEqual(plan);
+    });
+});
+
+describe('deliverable prompt content', () => {
+    test('ignores system messages and honors the delivered-message offset', () => {
+        const messages = [
+            { role: 'system', content: 'rules' },
+            { role: 'user', content: 'already upstream' },
+            { role: 'assistant', content: 'answer' },
+            { role: 'user', content: 'new turn' }
+        ];
+
+        expect(hasDeliverablePromptContent(messages, 2)).toBe(true);
+        expect(hasDeliverablePromptContent(messages, 3)).toBe(false);
+    });
+
+    test('accepts text, images, assistant tool calls and tool results', () => {
+        expect(hasDeliverablePromptContent([{ role: 'user', content: 'hello' }])).toBe(true);
+        expect(
+            hasDeliverablePromptContent([
+                { role: 'user', content: [{ type: 'image_url', image_url: { url: 'x' } }] }
+            ])
+        ).toBe(true);
+        expect(
+            hasDeliverablePromptContent([
+                { role: 'assistant', content: null, tool_calls: [{ id: 'call_1' }] }
+            ])
+        ).toBe(true);
+        expect(hasDeliverablePromptContent([{ role: 'tool', content: '' }])).toBe(true);
+    });
+
+    test('rejects empty or system-only delivered turns', () => {
+        expect(hasDeliverablePromptContent([])).toBe(false);
+        expect(hasDeliverablePromptContent([{ role: 'system', content: 'rules' }])).toBe(false);
+        expect(hasDeliverablePromptContent([{ role: 'user', content: '' }])).toBe(false);
+        expect(hasDeliverablePromptContent([{ role: 'user', content: [{ type: 'text', text: '' }] }])).toBe(
+            false
+        );
     });
 });

@@ -47,6 +47,17 @@ export {
 
 export { createPolicyContext, evaluateToolPolicy } from './policy.js';
 
+export {
+    buildDisabledToolOverrides,
+    matchesAllowedToolName,
+    normalizeBackendToolIds,
+    normalizeConfiguredToolNames,
+    normalizeToolName,
+    resolveInternalAllowedToolIds
+} from './internal-resolution.js';
+
+export { reconcileStreamedToolCalls } from './stream-reconciliation.js';
+
 export { validateToolCall, validateToolCalls } from './validator.js';
 
 export {

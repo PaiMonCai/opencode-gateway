@@ -22,4 +22,10 @@ export {
     InternalError
 } from './taxonomy.js';
 
-export { toOpenAIError, asGatewayError, codeForStatus, isTransientUpstreamError } from './mapping.js';
+export {
+    toOpenAIError,
+    asGatewayError,
+    codeForStatus,
+    isTransientUpstreamError,
+    transformUpstreamError
+} from './mapping.js';

@@ -206,3 +206,136 @@ export function isTransientUpstreamError(error) {
     }
     return false;
 }
+
+/** Error class names that mean the failure originated inside the gateway. */
+const INTERNAL_ERROR_NAMES = new Set([
+    'Error',
+    'TypeError',
+    'RangeError',
+    'ReferenceError',
+    'SyntaxError',
+    'URIError',
+    'EvalError',
+    'AggregateError',
+    'Object'
+]);
+
+/**
+ * @typedef {Error & {statusCode?: number, code?: string, type?: string, availableModels?: string[]}} UpstreamErrorLike
+ */
+
+/**
+ * Map an upstream failure onto the route engine's OpenAI-compatible status/body
+ * pair. This preserves the historical route contract while keeping the mapping
+ * out of the turn orchestrator.
+ *
+ * @param {UpstreamErrorLike} error Thrown upstream error.
+ * @returns {{statusCode: number, error: {message: string, type: string, code?: string, available_models?: string[]}}}
+ *   Status and client-facing error.
+ */
+export function transformUpstreamError(error) {
+    const isInternal = !error.name || INTERNAL_ERROR_NAMES.has(error.name);
+    let statusCode = 500;
+    let message = isInternal ? 'Internal server error' : error.message || 'Internal server error';
+    let type = 'server_error';
+    let code = isInternal ? 'internal_error' : error.code || error.name || 'internal_error';
+
+    if (error.message && error.message.includes('Request timeout')) {
+        statusCode = 504;
+        type = 'timeout';
+        code = 'timeout';
+        message = 'Request timeout';
+    } else if (error.message && error.message.includes('ENOENT')) {
+        statusCode = 500;
+        type = 'internal_error';
+        code = 'file_access_error';
+        message =
+            'OpenCode backend file access error. This may be a Windows compatibility issue. Please try restarting the service.';
+    } else if (error.statusCode) {
+        statusCode = error.statusCode;
+        const upstreamType = error.code || error.type || '';
+        const upstreamMessage = error.message || '';
+
+        if (
+            upstreamType === 'CreditsError' ||
+            upstreamType === 'InsufficientBalanceError' ||
+            upstreamMessage.toLowerCase().includes('insufficient balance') ||
+            upstreamMessage.toLowerCase().includes('insufficient credits') ||
+            upstreamMessage.toLowerCase().includes('billing') ||
+            upstreamMessage.toLowerCase().includes('quota exceeded') ||
+            upstreamMessage.toLowerCase().includes('credit limit')
+        ) {
+            statusCode = 402;
+            type = 'insufficient_quota';
+            code = 'insufficient_quota';
+            message = upstreamMessage || 'Insufficient balance or quota exceeded';
+        } else if (
+            upstreamType === 'RateLimitError' ||
+            upstreamType === 'TooManyRequestsError' ||
+            statusCode === 429 ||
+            upstreamMessage.toLowerCase().includes('rate limit') ||
+            upstreamMessage.toLowerCase().includes('too many requests')
+        ) {
+            statusCode = 429;
+            type = 'rate_limit_exceeded';
+            code = 'rate_limit_exceeded';
+            message = upstreamMessage || 'Rate limit exceeded';
+        } else if (
+            upstreamType === 'AuthenticationError' ||
+            upstreamType === 'InvalidAPIKeyError' ||
+            statusCode === 401 ||
+            upstreamMessage.toLowerCase().includes('invalid api key') ||
+            upstreamMessage.toLowerCase().includes('unauthorized') ||
+            upstreamMessage.toLowerCase().includes('authentication')
+        ) {
+            statusCode = 401;
+            type = 'invalid_api_key';
+            code = 'invalid_api_key';
+            message = upstreamMessage || 'Invalid API key';
+        } else if (
+            upstreamType === 'PermissionError' ||
+            statusCode === 403 ||
+            upstreamMessage.toLowerCase().includes('permission denied') ||
+            upstreamMessage.toLowerCase().includes('access denied')
+        ) {
+            statusCode = 403;
+            type = 'permission_denied';
+            code = 'permission_denied';
+            message = upstreamMessage || 'Permission denied';
+        } else if (
+            upstreamType === 'NotFoundError' ||
+            statusCode === 404 ||
+            upstreamMessage.toLowerCase().includes('model not found') ||
+            upstreamMessage.toLowerCase().includes('does not exist')
+        ) {
+            statusCode = 404;
+            type = upstreamType === 'model_not_found' ? 'invalid_request_error' : 'model_not_found';
+            code = 'model_not_found';
+            message = upstreamMessage || 'Model not found';
+        } else if (statusCode === 400 || upstreamType === 'BadRequestError') {
+            statusCode = 400;
+            type = 'invalid_request_error';
+            code = 'invalid_request_error';
+            message = upstreamMessage || 'Invalid request';
+        } else if (statusCode >= 500) {
+            statusCode = 502;
+            type = 'server_error';
+            code = 'server_error';
+            message = upstreamMessage || 'Upstream provider error';
+        } else {
+            type = upstreamType.toLowerCase().replace(/error$/, '_error') || 'upstream_error';
+            code = upstreamType;
+            message = upstreamMessage;
+        }
+    }
+
+    return {
+        statusCode,
+        error: {
+            message,
+            type,
+            ...(code && { code }),
+            ...(error.availableModels && { available_models: error.availableModels })
+        }
+    };
+}
