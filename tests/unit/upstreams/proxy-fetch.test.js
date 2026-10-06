@@ -1,7 +1,10 @@
 import net from 'node:net';
 import http from 'node:http';
+import asyncHooks from 'node:async_hooks';
+import { getEventListeners } from 'node:events';
 import { jest } from '@jest/globals';
 
+import { startStub } from './helpers.js';
 import {
     createProxyAgent,
     createUpstreamFetch,
@@ -374,5 +377,135 @@ describe('proxied fetch over a real HTTP CONNECT proxy', () => {
         const response = await fetchThroughProxy(url);
         expect(response.status).toBe(200);
         expect(proxy.targets.at(-1)).toBe(`localtest.internal:${new URL(origin.url).port}`);
+    });
+});
+
+/**
+ * Poll until a condition holds.
+ *
+ * @param {() => boolean} condition Predicate.
+ * @param {number} [timeoutMs] Give up after this long.
+ * @returns {Promise<void>} Resolves once the predicate is true.
+ */
+async function waitFor(condition, timeoutMs = 2000) {
+    const deadline = Date.now() + timeoutMs;
+    while (!condition()) {
+        if (Date.now() > deadline) throw new Error('waitFor timed out');
+        await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+}
+
+/**
+ * Run `work` and count the Node abort observers (`eos()` async resources, the
+ * `STREAM_END_OF_STREAM` handles Jest reports) it creates.
+ *
+ * `http.request` is handed no `signal` on purpose: Node's own `addAbortSignal`
+ * attaches such an observer to the request, and the observer outlives the
+ * request whenever anything else still holds it — the proxy agents keep their
+ * socket, and the socket keeps `_httpMessage`. Jest then reports the leaked
+ * observer as an open handle. Asserting on the creation stack is the only way to
+ * see this from a test: the observer is a plain async resource, not a file
+ * descriptor or socket, so `server.getConnections()` and friends say nothing.
+ *
+ * @param {() => Promise<void>} work Work that must not leak observers.
+ * @returns {Promise<number>} Observers created while it ran.
+ */
+async function countNodeAbortObservers(work) {
+    let created = 0;
+    const hook = asyncHooks.createHook({
+        init(_asyncId, type) {
+            if (type !== 'STREAM_END_OF_STREAM') return;
+            if (String(new Error('probe').stack).includes('add-abort-signal')) created += 1;
+        }
+    });
+    hook.enable();
+    try {
+        await work();
+    } finally {
+        hook.disable();
+    }
+    return created;
+}
+
+/**
+ * The abort paths of the proxied transport. `signal` is wired inside
+ * `requestThroughProxy` rather than handed to Node, so these pin both halves:
+ * aborting still fails the call the way `fetch` does, and the wiring leaves
+ * nothing behind.
+ */
+describe('proxied fetch signal wiring', () => {
+    let origin;
+    let proxy;
+    let targetUrl;
+
+    beforeAll(async () => {
+        origin = await startStub((req, res) => {
+            if (req.url === '/hang') return; // accepted, never answered
+            if (req.url === '/slow') {
+                res.writeHead(200, { 'content-type': 'text/event-stream' });
+                const timer = setInterval(() => res.write('data: tick\n\n'), 10);
+                req.socket.on('close', () => clearInterval(timer));
+                return;
+            }
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: true }));
+        });
+        proxy = await startSocksProxy();
+        // `localtest.internal` is not loopback, so it is proxied; the SOCKS
+        // server resolves it to the local origin.
+        targetUrl = origin.baseUrl.replace('127.0.0.1', 'localtest.internal');
+    });
+
+    afterAll(async () => {
+        await proxy.close();
+        await origin.close();
+    });
+
+    test('aborts an in-flight request with an AbortError and drops the listener', async () => {
+        const fetchThroughProxy = createUpstreamFetch({ proxyUrl: proxy.url });
+        const controller = new AbortController();
+        const pending = fetchThroughProxy(`${targetUrl}/hang`, { signal: controller.signal });
+        await waitFor(() => origin.requests.some((entry) => entry.url === '/hang'));
+
+        controller.abort();
+        const error = await pending.catch((failure) => failure);
+        expect(error).toMatchObject({ name: 'AbortError', code: 'ABORT_ERR' });
+        expect(getEventListeners(controller.signal, 'abort')).toHaveLength(0);
+    });
+
+    test('fails immediately when the signal is already aborted', async () => {
+        const fetchThroughProxy = createUpstreamFetch({ proxyUrl: proxy.url });
+        const controller = new AbortController();
+        controller.abort();
+        const error = await fetchThroughProxy(`${targetUrl}/ok`, { signal: controller.signal }).catch(
+            (failure) => failure
+        );
+        expect(error).toMatchObject({ name: 'AbortError', code: 'ABORT_ERR' });
+    });
+
+    test('aborting a streamed body errors the body', async () => {
+        const fetchThroughProxy = createUpstreamFetch({ proxyUrl: proxy.url });
+        const controller = new AbortController();
+        const response = await fetchThroughProxy(`${targetUrl}/slow`, { signal: controller.signal });
+        const reader = response.body.getReader();
+        await reader.read();
+
+        controller.abort();
+        const failure = await reader.read().then(
+            () => null,
+            (error) => error
+        );
+        expect(failure).toBeTruthy();
+    });
+
+    test('leaves no Node abort observer behind (the STREAM_END_OF_STREAM handle)', async () => {
+        const fetchThroughProxy = createUpstreamFetch({ proxyUrl: proxy.url });
+        const controller = new AbortController();
+        const observers = await countNodeAbortObservers(async () => {
+            const response = await fetchThroughProxy(`${targetUrl}/ok`, { signal: controller.signal });
+            await response.text();
+            controller.abort();
+        });
+        expect(observers).toBe(0);
     });
 });

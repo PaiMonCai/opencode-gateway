@@ -146,6 +146,25 @@ function toResponse(res) {
 }
 
 /**
+ * Build the error an aborted request fails with.
+ *
+ * Shaped exactly like the `AbortError` Node raises when `http.request` is handed
+ * a `signal` (`name: 'AbortError'`, `code: 'ABORT_ERR'`, `cause: reason`), so
+ * callers that branch on it keep working after we wire the signal ourselves.
+ *
+ * @param {AbortSignal} signal Signal that aborted.
+ * @returns {Error} Abort error.
+ */
+function abortError(signal) {
+    const error = /** @type {Error & { code?: string }} */ (
+        new Error('The operation was aborted', { cause: signal?.reason })
+    );
+    error.name = 'AbortError';
+    error.code = 'ABORT_ERR';
+    return error;
+}
+
+/**
  * Perform one request through the proxy agent.
  *
  * @param {string} url Target URL.
@@ -193,8 +212,7 @@ function requestThroughProxy(url, init, agent) {
                 path: `${target.pathname}${target.search}`,
                 method: init.method || 'GET',
                 headers,
-                agent,
-                signal: init.signal || undefined
+                agent
             },
             (res) => {
                 try {
@@ -206,7 +224,37 @@ function requestThroughProxy(url, init, agent) {
             }
         );
 
-        request.on('error', reject);
+        // The caller's signal is wired here rather than handed to
+        // `transport.request`, i.e. to Node's `addAbortSignal`. That helper
+        // attaches an `eos()` observer to the request — the `STREAM_END_OF_STREAM`
+        // async resource Jest reports as an open handle — and never removes its
+        // listeners from the request, so the observer lives exactly as long as
+        // anything else still holds the request. A proxied request is held past
+        // its response: the proxy agents keep the socket, and the socket keeps
+        // `_httpMessage`. Measured with the SOCKS agent, one observer per
+        // signal-carrying request stayed alive until the agent released the
+        // socket (~30s). Wiring the signal by hand keeps the same abort
+        // behaviour — the request is destroyed with an `AbortError` — without
+        // creating the observer, and drops our listener as soon as the request
+        // settles.
+        const signal = init.signal || null;
+        /** @type {(() => void)|null} */
+        let onAbort = null;
+        const releaseSignal = () => {
+            if (onAbort && signal) signal.removeEventListener('abort', onAbort);
+            onAbort = null;
+        };
+        if (signal) {
+            onAbort = () => request.destroy(abortError(signal));
+            if (signal.aborted) onAbort();
+            else signal.addEventListener('abort', onAbort, { once: true });
+        }
+
+        request.on('error', (error) => {
+            releaseSignal();
+            reject(error);
+        });
+        request.once('close', releaseSignal);
         if (body) request.write(body);
         request.end();
     });
