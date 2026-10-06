@@ -18,7 +18,6 @@ import { createRoutes } from './routes/index.js';
  * @property {any} [logger] Logger dependency.
  * @property {any} registry Conversation registry (`createConversationRegistry`).
  * @property {any} router Upstream router (`createUpstreamRouter`).
- * @property {any} [tools] Tool contract module, injectable for tests.
  * @property {any} [engine] Pre-built turn engine; built from the other options
  *   when omitted.
  * @property {any} [responseChains] `previous_response_id` chain index. The
@@ -38,7 +37,6 @@ export function createApp({
     logger = null,
     registry,
     router,
-    tools = null,
     engine = null,
     responseChains = null,
     ensureBackend = async () => {}
@@ -51,7 +49,6 @@ export function createApp({
             logger,
             registry,
             router,
-            tools,
             responseChains,
             ensureBackend
         });
