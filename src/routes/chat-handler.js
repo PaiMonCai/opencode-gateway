@@ -35,6 +35,7 @@ import {
     shouldRetryRuntimeAttempt
 } from './runtime-retry.js';
 import { createChatStreamWriter } from './streaming/chat-writer.js';
+import { startSseKeepalive } from './streaming/sse.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 500;
 
@@ -147,14 +148,12 @@ export function createChatHandler(deps) {
             res.on('close', () => {
                 if (!res.writableEnded) turnAbort.abort();
             });
-            /** @type {{close: () => void}|null} */
-            const eventStream = /** @type {{close: () => void}|null} */ (null);
             let stream;
             let pID = 'opencode';
             let mID = 'kimi-k2.5-free';
             let id = `chatcmpl-${crypto.randomUUID()}`;
-            /** @type {ReturnType<typeof setInterval>|null} */
-            let keepaliveInterval = null;
+            /** @type {(() => void)|null} */
+            let stopKeepalive = null;
 
             try {
                 const {
@@ -374,7 +373,6 @@ export function createChatHandler(deps) {
                 });
 
                 id = `chatcmpl-${crypto.randomUUID()}`;
-                keepaliveInterval = null;
                 let completionTokens = 0;
                 let reasoningTokens = 0;
 
@@ -476,7 +474,6 @@ export function createChatHandler(deps) {
                     let rawStreamedReasoning = '';
                     /** @type {import('../tools/contract.js').WireToolCall[]} */
                     const streamedToolCalls = [];
-                    keepaliveInterval = null;
                     completionTokens = 0;
                     reasoningTokens = 0;
                     const chatStreamWriter = createChatStreamWriter({
@@ -485,16 +482,9 @@ export function createChatHandler(deps) {
                         model: `${pID}/${mID}`
                     });
 
-                    const ensureKeepalive = () => {
-                        if (!keepaliveInterval) {
-                            keepaliveInterval = setInterval(() => {
-                                if (!res.destroyed) {
-                                    res.write(': keepalive\n\n');
-                                }
-                            }, 15000);
-                        }
-                    };
-                    ensureKeepalive();
+                    // Idle streaming turns must not look dead to the client; the
+                    // shared helper is idempotent, so it is started at most once.
+                    if (!stopKeepalive) stopKeepalive = startSseKeepalive(res);
 
                     /**
                      * @param {string} delta Streamed text.
@@ -640,7 +630,7 @@ export function createChatHandler(deps) {
                         chatStreamWriter.toolCalls(finalStreamedToolCalls);
                     }
 
-                    if (keepaliveInterval) clearInterval(keepaliveInterval);
+                    if (stopKeepalive) stopKeepalive();
 
                     const promptTokens = Math.ceil((fullPromptText || '').length / 4);
                     chatStreamWriter.finish(
@@ -793,7 +783,7 @@ export function createChatHandler(deps) {
                 logError('[Proxy] API Error:', /** @type {UpstreamErrorLike} */ (error).message);
                 logError('[Proxy] Error details:', error);
 
-                if (keepaliveInterval) clearInterval(keepaliveInterval);
+                if (stopKeepalive) stopKeepalive();
 
                 if (res.writableEnded || res.destroyed) {
                     // The client is gone; there is nobody to report to.
@@ -810,11 +800,7 @@ export function createChatHandler(deps) {
             } finally {
                 if (typeof releaseConversationLock === 'function') releaseConversationLock();
                 if (typeof releaseTurnCapacity === 'function') releaseTurnCapacity();
-                if (typeof keepaliveInterval !== 'undefined' && keepaliveInterval)
-                    clearInterval(keepaliveInterval);
-                if (eventStream && eventStream.close) {
-                    eventStream.close();
-                }
+                if (stopKeepalive) stopKeepalive();
             }
         } catch (error) {
             logError('[Proxy] Request Handler Error:', /** @type {UpstreamErrorLike} */ (error).message);
