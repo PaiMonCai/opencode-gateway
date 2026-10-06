@@ -11,7 +11,7 @@ It removes the friction between a gateway and OpenCode: stateless OpenAI request
 ## 📋 Requirements
 
 - **Docker**: Docker 20.10+ and Docker Compose
-- **Local Node**: Node.js 20+
+- **Local Node**: Node.js 24+
 - **OpenCode CLI**: required only for the **free tier** (the middleware manages the backend). A Go subscription or paid Zen credit needs no runtime — see below.
 
 ## 🎯 Two upstreams, pick what you need

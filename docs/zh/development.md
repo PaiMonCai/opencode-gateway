@@ -3,7 +3,7 @@
 ## 📋 环境准备
 
 ```bash
-node --version    # 需要 20+
+node --version    # 需要 24+
 npm install
 
 # 安装 OpenCode CLI
@@ -31,27 +31,39 @@ npm run test:contract # 对外契约（tests/contract，api-reference 逐条）
 npm run test:verify   # 验证套件（tests/verification）
 npm run test:all      # 以上三套测试一次跑完
 npm run test:coverage # 覆盖率
+npm run test:integration  # 需要 Docker 的集成测试
+npm run test:stream       # 对真机网关的流式冒烟（手动）
+npm run test:e2e          # 真机 runtime 端到端冒烟（tests/e2e/smoke.sh），不进 CI
 npm run test:one -- tests/unit/conversation/registry.test.js --runInBand  # 跑单个文件
 ```
 
 > 所有 Jest 调用都必须经过 npm 脚本（脚本已带 `NODE_OPTIONS=--experimental-vm-modules`）；裸 `npx jest` 在 ESM 下会报 `Cannot use import statement outside a module`。
 > 测试不依赖网络、不依赖真实 OpenCode runtime、不绑定固定端口（stub 服务器用端口 0）。CI（`.github/workflows/ci.yml`）在 push/PR 上跑 lint → format:check → typecheck → `npm run test:all`（unit → contract → verification）。
 
-真实上游冒烟（不在 CI 里跑，需要网络与可达的上游）：
+Docker 验证：
 
 ```bash
-node tests/verification/smoke/real-upstream-smoke.mjs
+docker compose up -d --build
+docker compose logs -f
 ```
 
-该脚本用故意无效的 key 直连真实的 OpenCode Zen 端点，验证上游原生错误响应逐字节到达客户端，而不会被本项目的错误分类改写。
+有两个冒烟脚本不进 CI，因为它们各自依赖真实的外部条件：
 
-真实 runtime 冒烟（不在 CI 里跑，需要真实的 `opencode` 可执行文件与可达的 runtime）：
+- **真实上游**——需要网络与可达的上游：
 
-```bash
-bash tests/e2e/smoke.sh
-```
+  ```bash
+  node tests/verification/smoke/real-upstream-smoke.mjs
+  ```
 
-它沿 SDK 的 runtime 路径起网关，等 `/health` 就绪后，依次跑一次非流式与一次流式 chat completion，外加一次 Responses 调用。可用 `OPENCODE_PATH`、`E2E_MODEL`、`E2E_PORT`、`E2E_TIMEOUT_SECONDS` 调整。
+  该脚本用故意无效的 key 直连真实的 OpenCode Zen 端点，验证上游原生错误响应逐字节到达客户端，而不会被本项目的错误分类改写。
+
+- **真实 runtime**——需要真实的 `opencode` 可执行文件与可达的 runtime：
+
+  ```bash
+  npm run test:e2e          # 等价于：bash tests/e2e/smoke.sh
+  ```
+
+  它沿 SDK 的 runtime 路径起网关，等 `/health` 就绪后，依次跑一次非流式与一次流式 chat completion，外加一次 Responses 调用。可用 `OPENCODE_PATH`、`E2E_MODEL`、`E2E_PORT`、`E2E_TIMEOUT_SECONDS` 调整。
 
 ## 📂 项目结构
 
