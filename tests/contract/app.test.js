@@ -149,8 +149,6 @@ const { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } =
 
 /**
  * Build an application the way `index.js` does, with the mocked SDK.
- * The pre-rewrite suite called `createApp(config).app`; the rewrite keeps the
- * frozen signature `buildApp({config, logger, registry, router, tools, engine})`.
  *
  * @param {Record<string, any>} config Gateway config.
  * @returns {import('express').Application} Application.
@@ -1251,8 +1249,8 @@ describe('Proxy OpenAI API', () => {
     });
 
     test('streaming surfaces an upstream message error without waiting out the first-delta window', async () => {
-        // A message that the upstream aborts never emits another delta. The collector used to
-        // sit through the entire first-delta timeout before polling rediscovered the error.
+        // A message the upstream aborts never emits another delta, so the error
+        // must surface without waiting out the first-delta window.
         sdkMocks.eventSubscribe.mockImplementationOnce(async () => {
             const sessionId = 'test-session-id';
             const mockEvents = [

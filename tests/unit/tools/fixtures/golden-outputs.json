@@ -1,7 +1,7 @@
 {
     "meta": {
         "generatedAt": "2026-10-04",
-        "generatedFrom": "src/tool-runtime/* at git HEAD c68e10369b815e991d1c56277f28e98080d10ef8 (pre-rewrite implementation)",
+        "generatedFrom": "archived tool runtime at commit c68e10369b815e991d1c56277f28e98080d10ef8",
         "normalization": "call ids matching /^call_\\d{10,}_/ are stored as call_TS_ because toFinalCalls() seeds ids with Date.now()",
         "order": "parallel arrays follow the fixture lists and the iteration order documented in parity.test.js"
     },

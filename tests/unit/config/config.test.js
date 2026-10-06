@@ -286,8 +286,8 @@ describe('describeConfig', () => {
         for (const field of CONFIG_FIELDS) {
             expect(typeof field.key).toBe('string');
             expect(typeof field.type).toBe('string');
-            // A field either reads environment names or records why it no longer
-            // does (a merged or dropped setting), so nothing disappears silently.
+            // A field either reads environment names or records why it does not
+            // (a merged or dropped setting), so nothing disappears silently.
             if (field.env.length === 0) expect(typeof field.removed).toBe('string');
         }
     });

@@ -90,9 +90,9 @@ describe('rewriteSseModel over a real split stream', () => {
         expect(outputRecords[6]).toBe('data: [DONE]');
     });
 
-    test('[FINDING-4 fixed] an unterminated trailing record keeps its exact framing', async () => {
-        // Defect fixed (T3): the rewrite keeps the record's original framing, so
-        // a truncated tail is not given a synthetic blank-line terminator.
+    test('an unterminated trailing record keeps its exact framing', async () => {
+        // The rewriter keeps the record's original framing, so a truncated tail
+        // gets no synthetic blank-line terminator.
         const server = await startStubServer((req, res) => {
             res.writeHead(200, { 'content-type': 'text/event-stream' });
             res.end('data: {"model":"upstream-model","id":"tail"}');
@@ -144,13 +144,10 @@ describe('rewriteSseModel over a real split stream', () => {
         expect(output).toBe('data: hello\n\ndata: world\n\n');
     });
 
-    test('[FINDING-6 fixed] CRLF-framed records keep their framing and every model field is rewritten', async () => {
-        // Defect fixed during verification: SSE lines may legally end with CRLF
-        // (WHATWG event-stream), and the rewriter used to split on "\n\n" only,
-        // so a CRLF stream was flushed as one record — only the first payload
-        // kept a rewritten model and the first record's CRLF was mangled to
-        // "\n\r\n". Upstream framing is a passthrough contract (BEHAVIOUR-SPEC
-        // §5), so both properties are asserted here.
+    test('CRLF-framed records keep their framing and every model field is rewritten', async () => {
+        // SSE lines may legally end with CRLF (WHATWG event-stream) and upstream
+        // framing is a passthrough contract (BEHAVIOUR-SPEC §5), so both
+        // properties are asserted here.
         const upstreamRecords =
             'data: {"model":"upstream-model","id":"a"}\r\n\r\n' +
             'data: {"model":"upstream-model","id":"b"}\r\n\r\n';

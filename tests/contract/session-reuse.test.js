@@ -202,9 +202,7 @@ const { createDirectUpstream, createRuntimeUpstream, createUpstreamRouter } =
     await import('../../src/upstreams/index.js');
 
 /**
- * Build an application the way `index.js` does, with the mocked SDK. The
- * pre-rewrite suite called `createApp(config).app`; the rewrite keeps the frozen
- * signature `buildApp({config, logger, registry, router, tools, engine})`.
+ * Build an application the way `index.js` does, with the mocked SDK.
  *
  * @param {Record<string, any>} config Gateway config.
  * @returns {import('express').Application} Application.

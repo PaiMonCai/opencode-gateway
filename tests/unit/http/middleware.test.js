@@ -98,7 +98,7 @@ describe('createBodyParsers', () => {
         expect(response.body.error.message).toBe('Request body too large');
     });
 
-    test('defaults to the pre-rewrite body limit', () => {
+    test('defaults to the documented 50 MB body limit', () => {
         expect(DEFAULT_JSON_BODY_LIMIT).toBe('50mb');
     });
 });

@@ -49,8 +49,8 @@ describe('§4.1 text contract exposure', () => {
         const prompt = promptTextOf(fake.calls.prompts.at(-1).args);
         expect(prompt).toContain('external__weather');
         expect(prompt).toContain('function_calls');
-        // The regression the lead fixed: the contract reminder must actually be
-        // appended (it was previously built but never assigned).
+        // The contract reminder must actually be appended; building it without
+        // assigning it drops the reminder the model relies on.
         expect(prompt).toMatch(/REMINDER: External tools are called by emitting markup/);
         expect(prompt).toContain('Available names: external__weather');
         // The reminder rides at the end of the prompt, right before generation

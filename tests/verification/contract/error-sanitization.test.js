@@ -1,18 +1,10 @@
 /**
- * Independent re-verification of the FINDING-11 fix (commit `9a0a21a`).
+ * Error-surface coverage over the assembled app: a failure of *ours* answers the
+ * documented api-reference 500 body with nothing leaked, while a failure the
+ * *runtime reported* keeps its own message and code.
  *
- * Two properties have to hold at once, and both are asserted here through the
- * assembled app over HTTP:
- *
- *  1. a failure of *ours* (a built-in JS error class, a nameless object) answers
- *     the documented api-reference 500 body — no leaked message, no leaked
- *     constructor name;
- *  2. a failure the *runtime reported* keeps its own message and code, so the
- *     client can still see why the turn failed.
- *
- * This suite is deliberately separate from `errors-and-locking.test.js` (which
- * carries the flipped FINDING-11 probe) so the two properties are pinned
- * independently of the one assertion that triggered the fix.
+ * Both properties are asserted here through HTTP, independently of the one
+ * assertion that pins the error mapping itself.
  */
 
 import { createAssembly } from './harness.js';
@@ -42,7 +34,7 @@ const DOCUMENTED_500 = {
 
 const failureCase = (label, make) => [label, make];
 
-describe('FINDING-11 — our own failures answer the documented 500 body', () => {
+describe('our own failures answer the documented 500 body', () => {
     const cases = [
         failureCase('Error', () => new Error('boom')),
         failureCase('TypeError', () => new TypeError('fetch failed')),
@@ -75,7 +67,7 @@ describe('FINDING-11 — our own failures answer the documented 500 body', () =>
     });
 });
 
-describe('FINDING-11 — runtime-reported failures stay diagnosable', () => {
+describe('runtime-reported failures stay diagnosable', () => {
     test('an error the runtime named keeps its message and takes its name as the code', async () => {
         const runtimeError = Object.assign(new Error('Aborted'), { name: 'MessageAbortedError' });
         const { http } = await assembly({ runtime: { promptError: () => runtimeError } });
@@ -156,7 +148,7 @@ describe('FINDING-11 — runtime-reported failures stay diagnosable', () => {
             type: 'server_error',
             code: 'MessageAbortedError'
         });
-        // The old leak was `code: "Object"`; make sure it cannot come back.
+        // The error code must never be the leaked constructor name "Object".
         expect(JSON.stringify(failed)).not.toContain('"code":"Object"');
         expect(res.text.trimEnd().endsWith('data: [DONE]')).toBe(true);
     });

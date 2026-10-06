@@ -5,9 +5,8 @@ import { jest } from '@jest/globals';
  * Boot contract: the assembly in `src/bootstrap.js` must produce a working
  * application with nothing but configuration and an SDK implementation.
  *
- * This is the regression test for a wiring bug that unit tests could not see:
- * `index.js` built the runtime upstream without an SDK, so the process failed at
- * startup while every route test (which injects the SDK itself) stayed green.
+ * Route tests inject their own SDK, so this is where a missing SDK at assembly
+ * time is caught — it otherwise only shows up as a startup failure.
  */
 
 const fakeSdk = {

@@ -11,7 +11,7 @@ import {
  * Every fixture in this file is verbatim output captured from OpenCode free models
  * (deepseek-v4-flash-free / big-pickle) running through the proxy-bridge tool mode.
  * These models ignore the instructed <function_calls> contract and emit their own
- * native or invented markup, which used to be dropped entirely.
+ * native or invented markup, which has to be parsed rather than dropped.
  */
 
 const registry = buildExternalToolRegistry([
@@ -44,14 +44,16 @@ const firstCall = (calls) => {
 
 describe('canonical <function_calls> format still works', () => {
     test('parses single call', () => {
-        const text = '<function_calls>{"name":"external__bash","arguments":{"command":"ls -la"}}</function_calls>';
+        const text =
+            '<function_calls>{"name":"external__bash","arguments":{"command":"ls -la"}}</function_calls>';
         const { name, args } = firstCall(parseExternalToolCallsFromText(registry, text));
         expect(name).toBe('bash');
         expect(args).toEqual({ command: 'ls -la' });
     });
 
     test('parses array payload', () => {
-        const text = '<function_calls>[{"name":"external__bash","arguments":{"command":"pwd"}},{"name":"external__read","arguments":{"file":"a.txt"}}]</function_calls>';
+        const text =
+            '<function_calls>[{"name":"external__bash","arguments":{"command":"pwd"}},{"name":"external__read","arguments":{"file":"a.txt"}}]</function_calls>';
         const calls = parseExternalToolCallsFromText(registry, text);
         expect(calls.map((c) => c.function.name)).toEqual(['bash', 'read']);
     });
@@ -261,8 +263,8 @@ describe('tag-named formats', () => {
 
 /**
  * Cline/Roo-style markup, where each argument is its own XML child element. Captured live
- * from deepseek-v4-flash-free: `<read>\n<path>a.txt</path>\n</read>`. The tag was matched
- * but the children were discarded, producing a call with empty arguments that then failed
+ * from deepseek-v4-flash-free: `<read>\n<path>a.txt</path>\n</read>`. The children must
+ * be read into the call's arguments, otherwise the call validates as empty and fails
  * schema validation for any tool with required fields.
  */
 describe('XML child element arguments', () => {
@@ -362,7 +364,8 @@ describe('bare JSON format', () => {
     });
 
     test('ignores JSON embedded in prose', () => {
-        const text = 'Here is an example payload: {"name":"bash","arguments":{"command":"ls"}} — note the shape.';
+        const text =
+            'Here is an example payload: {"name":"bash","arguments":{"command":"ls"}} — note the shape.';
         expect(parseExternalToolCallsFromText(registry, text)).toEqual([]);
     });
 
@@ -397,7 +400,8 @@ describe('no false positives on ordinary output', () => {
     });
 
     test('empty registry never yields tool calls', () => {
-        const dsml = '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="bash">\n<｜｜DSML｜｜parameter name="command" string="true">ls</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>';
+        const dsml =
+            '<｜｜DSML｜｜tool_calls>\n<｜｜DSML｜｜invoke name="bash">\n<｜｜DSML｜｜parameter name="command" string="true">ls</｜｜DSML｜｜parameter>\n</｜｜DSML｜｜invoke>\n</｜｜DSML｜｜tool_calls>';
         expect(parseExternalToolCallsFromText([], dsml)).toEqual([]);
     });
 });
@@ -419,7 +423,12 @@ describe('streaming: foreign markup is withheld from text deltas', () => {
     });
 
     test('suppresses canonical markup split mid-tag', () => {
-        const chunks = ['keep ', '<function_c', 'alls>{"name":"bash","arguments":{}}</function_calls>', ' tail'];
+        const chunks = [
+            'keep ',
+            '<function_c',
+            'alls>{"name":"bash","arguments":{}}</function_calls>',
+            ' tail'
+        ];
         expect(runFilter(chunks)).toBe('keep  tail');
     });
 
@@ -478,7 +487,11 @@ describe('streaming: tool calls are extracted mid-stream', () => {
     };
 
     test('extracts canonical call split across chunks', () => {
-        const calls = runParser(['<function_ca', 'lls>{"name":"bash","argum', 'ents":{"command":"ls"}}</function_calls>']);
+        const calls = runParser([
+            '<function_ca',
+            'lls>{"name":"bash","argum',
+            'ents":{"command":"ls"}}</function_calls>'
+        ]);
         expect(calls).toHaveLength(1);
         expect(calls[0].function.name).toBe('bash');
     });
@@ -506,9 +519,7 @@ describe('streaming: tool calls are extracted mid-stream', () => {
     });
 
     test('does not emit duplicates for one call', () => {
-        const calls = runParser([
-            '<tool_call>{"name":"bash","arguments":{"command":"ls"}}</tool_call>'
-        ]);
+        const calls = runParser(['<tool_call>{"name":"bash","arguments":{"command":"ls"}}</tool_call>']);
         expect(calls).toHaveLength(1);
     });
 
@@ -549,28 +560,34 @@ describe('cross-channel blocks', () => {
     });
 
     test('bare JSON in one channel still parses when that channel is passed alone', () => {
-        const calls = parseExternalToolCallsFromText(registry, '{"name":"bash","arguments":{"command":"ls"}}');
+        const calls = parseExternalToolCallsFromText(
+            registry,
+            '{"name":"bash","arguments":{"command":"ls"}}'
+        );
         expect(calls).toHaveLength(1);
     });
 });
 
 describe('rawCallsFromJsonText JSON scan fallback', () => {
     test('parses nested function_calls wrapper emitted by models echoing the reminder', () => {
-        const nested = '<function_calls>\n<function_calls>\n{"name":"external__bash","arguments":{"command":"ls"}}\n</function_calls>';
+        const nested =
+            '<function_calls>\n<function_calls>\n{"name":"external__bash","arguments":{"command":"ls"}}\n</function_calls>';
         const { name, args } = firstCall(parseExternalToolCallsFromText(registry, nested));
         expect(name).toBe('bash');
         expect(args).toEqual({ command: 'ls' });
     });
 
     test('scan fallback works for JSON prefixed by prose inside the block', () => {
-        const text = '<function_calls>calling tool: {"name":"external__bash","arguments":{"command":"pwd"}}</function_calls>';
+        const text =
+            '<function_calls>calling tool: {"name":"external__bash","arguments":{"command":"pwd"}}</function_calls>';
         const { name, args } = firstCall(parseExternalToolCallsFromText(registry, text));
         expect(name).toBe('bash');
         expect(args).toEqual({ command: 'pwd' });
     });
 
-    test('clean canonical format still parses correctly after the fallback was added', () => {
-        const text = '<function_calls>{"name":"external__bash","arguments":{"command":"echo hi"}}</function_calls>';
+    test('clean canonical format still parses correctly', () => {
+        const text =
+            '<function_calls>{"name":"external__bash","arguments":{"command":"echo hi"}}</function_calls>';
         const { name, args } = firstCall(parseExternalToolCallsFromText(registry, text));
         expect(name).toBe('bash');
         expect(args).toEqual({ command: 'echo hi' });
@@ -579,7 +596,8 @@ describe('rawCallsFromJsonText JSON scan fallback', () => {
 
 describe('<function=name>/<parameter=key> markup (Qwen/GLM native dialect)', () => {
     test('parses a <tool_call> block with <function=...> and <parameter=...> children', () => {
-        const text = '<tool_call>\n<function=bash>\n<parameter=command>ls -la</parameter>\n<parameter=description>list files</parameter>\n</function>\n</tool_call>';
+        const text =
+            '<tool_call>\n<function=bash>\n<parameter=command>ls -la</parameter>\n<parameter=description>list files</parameter>\n</function>\n</tool_call>';
         const { name, args } = firstCall(parseExternalToolCallsFromText(registry, text));
         expect(name).toBe('bash');
         expect(args).toEqual({ command: 'ls -la', description: 'list files' });
@@ -588,9 +606,16 @@ describe('<function=name>/<parameter=key> markup (Qwen/GLM native dialect)', () 
     test('normalizes a separator-dropped tool name to the registry name', () => {
         // `web_fetch`-style mismatch: the model writes the name without the underscore.
         const fetchRegistry = buildExternalToolRegistry([
-            { type: 'function', function: { name: 'web_fetch', parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] } } }
+            {
+                type: 'function',
+                function: {
+                    name: 'web_fetch',
+                    parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] }
+                }
+            }
         ]);
-        const text = '<tool_call>\n<function=webfetch>\n<parameter=url>https://example.com</parameter>\n</function>\n</tool_call>';
+        const text =
+            '<tool_call>\n<function=webfetch>\n<parameter=url>https://example.com</parameter>\n</function>\n</tool_call>';
         const calls = parseExternalToolCallsFromText(fetchRegistry, text);
         expect(calls).toHaveLength(1);
         expect(calls[0].function.name).toBe('web_fetch');
@@ -598,7 +623,8 @@ describe('<function=name>/<parameter=key> markup (Qwen/GLM native dialect)', () 
     });
 
     test('strips the <function=...> block from visible text', () => {
-        const text = 'Let me run a command.\n<tool_call>\n<function=bash>\n<parameter=command>ls</parameter>\n</function>\n</tool_call>';
+        const text =
+            'Let me run a command.\n<tool_call>\n<function=bash>\n<parameter=command>ls</parameter>\n</function>\n</tool_call>';
         const stripped = stripFunctionCallMarkup(text);
         expect(stripped).not.toContain('<function=');
         expect(stripped).not.toContain('<parameter=');

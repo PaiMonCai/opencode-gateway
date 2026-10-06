@@ -1,18 +1,9 @@
 /**
- * Independent verification fixtures — T5a red-team pass.
+ * Verification fixtures, shared by the contract and module suites.
  *
- * Everything in this directory is written from scratch for the verification
- * pass. It deliberately imports NOTHING from `tests/unit/**`: the authors'
- * helpers, clocks and assertions are not reused, so a shared blind spot in the
- * unit suite cannot hide a defect from these tests.
- *
- * Fixtures here:
- *  - {@link createFakeClock}: a manual clock (no timers, no `Date.now()`),
- *  - {@link scriptedSessionBackend}: a fake runtime session reader,
- *  - {@link startStubServer}: a local HTTP server bound to port 0 (never a
- *    fixed port, so the suite runs in parallel and offline),
- *  - {@link createRegistryHarness}: the real conversation registry wired to the
- *    fake clock, the fake session backend and spies.
+ * Nothing here is imported from `tests/unit/**`: the unit helpers, clocks and
+ * assertions are not reused, so a shared blind spot in the unit suite cannot
+ * hide a defect from these tests.
  */
 
 import http from 'node:http';

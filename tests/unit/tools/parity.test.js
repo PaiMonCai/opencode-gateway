@@ -25,13 +25,12 @@ import {
 } from './fixtures/model-outputs.js';
 
 /**
- * Golden parity with the pre-rewrite tool runtime.
+ * Golden parity for the text tool contract (BEHAVIOUR-SPEC §4).
  *
- * `fixtures/golden-outputs.json` is a *recording* of the observable results produced by
- * the legacy `src/tool-runtime/*` implementation (git HEAD, before this rewrite) over the
- * corpus in `fixtures/model-outputs.js`. This test loads only the new `src/tools/**`
- * implementation and replays the same inputs, so equivalence stays pinned even after the
- * legacy directory is deleted.
+ * `fixtures/golden-outputs.json` records the observable results of the tool
+ * runtime that `src/tools/**` replaced (archived at commit
+ * c68e10369b815e991d1c56277f28e98080d10ef8). This test loads only
+ * `src/tools/**` and replays the same inputs, so the recorded behaviour stays pinned.
  *
  * The recording stores parallel arrays in the iteration order used below; the length
  * guards in the first test fail loudly if a fixture list is edited without regenerating.
@@ -59,7 +58,7 @@ const normalizeValidation = (result) => {
     return value;
 };
 
-describe('golden parity with the pre-rewrite tool runtime', () => {
+describe('golden parity with the recorded tool runtime', () => {
     test('the recording describes exactly this corpus', () => {
         expect(registry.map(withoutSource)).toHaveLength(golden.registryEntries.length);
         expect(CORPUS).toHaveLength(golden.parseExternal.length);

@@ -151,7 +151,7 @@ describe('invariant 4 — a rotation re-sends the full history', () => {
         ];
 
         // A failed turn rotates: the caller plans a fresh session and must send
-        // the full history rather than the delta the old plan would have sent.
+        // the full history rather than the delta a stale plan would have sent.
         const rotation = planRotationTurn(rotatedHistory);
         expect(rotation.delta).toEqual(rotatedHistory);
         registry.storeTurn({
