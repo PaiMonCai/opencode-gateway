@@ -1,12 +1,7 @@
 /**
- * Conversation identity.
- *
- * A conversation is addressed either explicitly — a session identity header the
- * client (or the gateway in front of us) sets — or implicitly, by inferring it
- * from the request content when no such header exists.
- *
- * Pure logic: it reads plain header maps, never `req`/`res`, and never talks to
- * an upstream.
+ * Conversation identity: explicit (a session identity header the client or the
+ * gateway in front of us sets) or implicit (inferred from the request content).
+ * Reads plain header maps only — never `req`/`res`, never an upstream.
  */
 
 import crypto from 'node:crypto';
@@ -14,16 +9,15 @@ import crypto from 'node:crypto';
 import { canonicalMessageFingerprint, hashMessage, prefixDigest } from './planner.js';
 
 /**
- * Header spellings accepted as a conversation identity, most specific first:
- * the first non-empty value wins (`docs/zh/configuration.md`, and now also
- * `docs/{zh,en}/api-reference.md` + `docs/BEHAVIOUR-SPEC.md` §1). Gateways and
- * agent harnesses disagree on the name, so the usual ones are tried in order.
- * `x-opencode-session` leads deliberately: it is the identity the operator
- * configures on the gateway side, and a client-supplied `session-id` must not
- * displace it. The full value keys the conversation — truncating it would alias
- * two distinct long ids onto one session; only the log preview is cut.
+ * Header spellings accepted as a conversation identity, most specific first: the
+ * first non-empty value wins. `x-opencode-session` leads deliberately — it is the
+ * identity the operator configures on the gateway side, and a client-supplied
+ * `session-id` must not displace it. The full value keys the conversation
+ * (truncating would alias two distinct long ids); only the log preview is cut.
  *
- * The set of names (11) is frozen; `SESSION_HEADER_NAMES` narrows or reorders it.
+ * The 11 names are frozen; `SESSION_HEADER_NAMES` narrows or reorders them. See
+ * `docs/BEHAVIOUR-SPEC.md` §1, `docs/zh/configuration.md` and
+ * `docs/{zh,en}/api-reference.md`.
  *
  * @type {ReadonlyArray<string>}
  */
@@ -64,8 +58,8 @@ export const IDENTITY_PREVIEW_LENGTH = 64;
 
 /**
  * Lowercase header names, trim, drop empties, deduplicate. Accepts the
- * comma-separated env form as well as an array. Falls back to the default list
- * when the configured list carries nothing usable.
+ * comma-separated env form as well as an array, and falls back to the default
+ * list when the configured list carries nothing usable.
  *
  * @param {unknown} names configured header names
  * @returns {Array<string>}
@@ -83,9 +77,9 @@ export function normalizeHeaderNames(names) {
 }
 
 /**
- * Normalize a header map to lowercase, single string values. Header values that
- * arrived as arrays (repeated headers) keep their first entry, matching what a
- * session identity means.
+ * Normalize a header map to lowercase, single string values. A header that
+ * arrived repeated (array) keeps its first entry, which is what a session
+ * identity means.
  *
  * @param {unknown} headers
  * @returns {Record<string, string>}
@@ -133,9 +127,9 @@ export function readHeaderIdentity({ headers, headerNames, enabled = true }) {
 }
 
 /**
- * Scope a derived conversation is isolated by. A gateway's own address and
- * credential are all we have to tell one client from another, so both take part
- * — together with the model, tool policy and mode that already live in `scope`.
+ * Scope a derived conversation is isolated by: the gateway's own address and
+ * credential are all we have to tell one client from another, so both take part,
+ * together with the model, tool policy and mode already in `scope`.
  *
  * @param {object} params
  * @param {unknown} params.headers raw header map
@@ -159,9 +153,8 @@ export function derivedScopeFor({ headers, scope, clientAddress = null }) {
 
 /**
  * Derive a conversation identity from the request content: an anchor (client
- * scope + the first delivered message) plus a fresh candidate key. The lookup
- * hands back the key of an existing conversation it recognised, so a brand-new
- * key here only survives when nothing matched.
+ * scope + the first delivered message) plus a fresh candidate key, which only
+ * survives when the lookup recognises no existing conversation.
  *
  * @param {object} params
  * @param {unknown} params.headers
@@ -186,7 +179,7 @@ export function deriveIdentity({ headers, scope, deliverable, enabled = false, c
         value: null,
         preview: '(derived)',
         startKey,
-        // Fresh key per conversation; only used when the lookup recognises nothing.
+        // Fresh enough to be unique; only used when the lookup recognises nothing.
         entryKey: `derived:${crypto.randomUUID()}`
     };
 }
@@ -207,11 +200,10 @@ export function conversationKeyFor(identity, scope) {
 }
 
 /**
- * Scope of a conversation: everything that changes what the backend session
- * must contain. It is derived from request input only, so it can be computed
- * before deciding which upstream serves the turn. `mode` takes part because a
- * direct session is only a label we invent while a runtime session is a real
- * upstream object.
+ * Scope of a conversation: everything that changes what the backend session must
+ * contain, computed from request input only so it can be resolved before choosing
+ * the upstream. `mode` takes part because a direct session is only a label we
+ * invent while a runtime session is a real upstream object.
  *
  * @param {object} params
  * @param {string} params.providerID
@@ -237,13 +229,11 @@ export function conversationScopeFor({
 }
 
 /**
- * Recognise an existing derived conversation among the candidates that share an
+ * Recognise an existing derived conversation among the candidates sharing an
  * anchor. Returns null when nothing matches, or when several candidates match
- * equally well — refusing is the only safe answer, because merging two clients'
- * histories is a data leak.
- *
- * Identical prefixes are told apart by the answer the client echoes back: each
- * entry remembers the text it produced.
+ * equally well: refusing is the only safe answer, because merging two clients'
+ * histories is a data leak. Identical prefixes are told apart by the answer the
+ * client echoes back.
  *
  * @param {object} params
  * @param {Array<object>} params.deliverable non-system messages, in order

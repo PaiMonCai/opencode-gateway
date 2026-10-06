@@ -1,9 +1,7 @@
 /**
- * OpenCode conversation-storage cleanup.
- *
- * The turn engine only needs a `cleanup()` hook. Filesystem traversal and the
- * optional periodic schedule live here so storage maintenance is not mixed with
- * Chat/Responses orchestration.
+ * OpenCode conversation-storage cleanup: the `cleanup()` hook the turn engine
+ * needs, plus the filesystem traversal and optional periodic schedule, kept apart
+ * from Chat/Responses orchestration.
  *
  * @module conversation/storage-cleanup
  */

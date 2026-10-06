@@ -1,37 +1,18 @@
 /**
  * Tool-call markup parsing.
  *
- * The proxy asks models to emit tool calls as `<function_calls>{json}</function_calls>`.
- * Models served by OpenCode's free tier frequently ignore that contract and fall back to
- * whatever markup their own training used. Observed alternatives, all captured verbatim
- * from live responses, are listed in FOREIGN FORMATS below.
+ * The proxy asks models to answer with `<function_calls>{json}</function_calls>`, but
+ * free-tier models frequently fall back to the markup their training used, so everything
+ * is normalized to the canonical form at this boundary. Accepted dialects: DSML
+ * (`<|DSML|invoke name="...">` with `<|DSML|parameter ...>`, where `|` is U+FF5C or an
+ * ASCII pipe and the marker is optional), `<tool_call>{json}</tool_call>`,
+ * `<function=name><parameter=key>value</parameter></function>`, registry-gated
+ * `<name args/>` / `<name>body</name>` tags, and a whole-message bare JSON object.
  *
- * Rather than teach every call site about each dialect, everything is normalized to the
- * canonical `<function_calls>` form at the parser boundary. Downstream code is unchanged.
- *
- * FOREIGN FORMATS
- *   1. DSML (DeepSeek native)
- *        <|DSML|tool_calls>
- *        <|DSML|invoke name="external__bash">
- *        <|DSML|parameter name="command" string="true">ls -la</|DSML|parameter>
- *        </|DSML|invoke>
- *        </|DSML|tool_calls>
- *      The `|` is U+FF5C (fullwidth vertical line), not an ASCII pipe. The marker is
- *      treated as optional so plain `<invoke>`/`<parameter>` markup parses too.
- *   2. JSON wrapper:      <tool_call>{"name":...,"arguments":{...}}</tool_call>
- *   3. Tag with attrs:    <external__bash arguments='{"command":"ls"}' name="external__bash"/>
- *   4. Tag with body:     <external__bash>{"command":"ls"}</external__bash>
- *                         <external__bash><parameters>{...}</parameters></external__bash>
- *                         <external__bash "Run a shell command">\n{"command":"ls"}
- *   5. Bare JSON:         {"name":"external__bash","arguments":{"command":"ls"}}
- *   6. Function-equals:   <function=read><parameter=file>a.txt</parameter></function>
- *
- * AMBIGUITY POLICY
- * Formats 1, 2, 6 and the canonical form carry their own delimiters, so they are
- * recognized unconditionally. Formats 3-5 are only recognized when the name matches a
- * tool in the request's registry, because `<summary>` or a JSON snippet in prose must
- * never be mistaken for a tool call. Format 5 additionally requires the JSON to span the
- * entire message body, so payload examples quoted mid-sentence are ignored.
+ * The ambiguity policy matters: formats carrying their own delimiters are recognized
+ * unconditionally, while the tag and bare-JSON ones are recognized only when the name
+ * matches the request registry (and, for bare JSON, only when the JSON spans the whole
+ * message), so `<summary>` or a JSON snippet quoted in prose is never mistaken for a call.
  *
  * @module tools/parser
  */
@@ -59,8 +40,8 @@ const RE = {
         `<${MARK}parameter\\s+name\\s*=\\s*["']([^"']+)["']([^>]*)>([\\s\\S]*?)</${MARK}parameter\\s*>`,
         'g'
     ),
-    // Singular <tool_call> JSON wrapper. Plural is handled by dsmlContainer, which
-    // falls through to JSON parsing when it holds no invoke blocks.
+    // Singular <tool_call> JSON wrapper; the plural form goes through dsmlContainer,
+    // which falls through to JSON parsing when it holds no invoke blocks.
     jsonWrapper: /<tool_call\s*>([\s\S]*?)<\/tool_call\s*>/g,
     codeFence: /^\s*```(?:[a-zA-Z0-9_-]*)\s*\n([\s\S]*?)\n?\s*```\s*$/,
     leadingNewline: /^\r?\n/,
@@ -242,9 +223,9 @@ function rawCallsFromJsonText(text) {
     try {
         return rawCallsFromJsonPayload(JSON.parse(trimmed));
     } catch {
-        // The body may be prefixed by stray markup — a nested <function_calls> tag copied
-        // from the contract reminder, or a tool wrapper tag emitted by the model before
-        // the JSON payload. Scan for the first balanced JSON value and try again.
+        // Stray markup may precede the JSON — a nested <function_calls> tag copied from the
+        // contract reminder, or a wrapper tag the model emitted before the payload. Scan for
+        // the first balanced JSON value and try again.
         const found = findFirstJsonValue(trimmed);
         if (!found) return [];
         try {
@@ -310,7 +291,7 @@ function findFirstJsonValue(text) {
 }
 
 // --- format extractors -----------------------------------------------------
-// Each returns { calls, spans } where spans are [start, end) ranges of consumed markup.
+// Each returns { calls, spans }, spans being [start, end) ranges of consumed markup.
 
 /**
  * Canonical `<function_calls>{json}</function_calls>` blocks.
@@ -476,9 +457,9 @@ function coerceSchemaValue(value, schema) {
  *     <offset>10</offset>
  *   </read>
  *
- * Widely used by Cline/Roo-style harnesses, so many models emit it from training even
- * when asked for JSON. Only child names declared in the tool's own schema are accepted,
- * which keeps prose containing angle brackets from being mistaken for arguments.
+ * Widely used by Cline/Roo-style harnesses, so many models emit it from training even when
+ * asked for JSON. Only child names declared in the tool's own schema are accepted, which
+ * keeps prose containing angle brackets from being mistaken for arguments.
  *
  * @param {string} body Tag body.
  * @param {Record<string, unknown>|undefined} parameters Declared tool schema.
@@ -615,9 +596,9 @@ function extractTagNamed(text, names, schemas = new Map()) {
                 }
             }
         } else {
-            // No JSON body. Arguments may still be present as XML child elements named
-            // after the schema's properties; dropping them here produced tool calls with
-            // empty arguments, which fail validation for any tool with required fields.
+            // No JSON body, but arguments may still be XML child elements named after the
+            // schema's properties; dropping them yields calls that fail validation for any
+            // tool with required fields.
             const xmlArgs = argsFromXmlChildren(body, schemas.get(name));
             calls.push({ name, arguments: xmlArgs || {} });
         }
@@ -662,11 +643,10 @@ function extractBareJson(text, names) {
  *   </function>
  *   </tool_call>
  *
- * The surrounding `<tool_call>` container is already consumed by extractJsonWrapper
- * (which strips it as a span even when the body is not JSON), so here we only recognise
- * the `<function=...>` opener, collect its `<parameter=...>` children, and mark the
- * whole `<function>...</function>` block for hiding. Name mapping (e.g. `webfetch` →
- * `web_fetch`) is resolved later against the request's registry.
+ * The `<tool_call>` container is already consumed by extractJsonWrapper (which strips it as
+ * a span even when the body is not JSON), so only the `<function=...>` opener and its
+ * `<parameter=...>` children are recognized here. Name mapping (`webfetch` → `web_fetch`)
+ * resolves later against the request registry.
  *
  * @param {string} text Text to scan.
  * @returns {ExtractResult} Calls and spans.
@@ -725,8 +705,8 @@ function collectAll(text, registry) {
     const calls = [];
     results.forEach((result) => {
         result.calls.forEach((call) => {
-            // Distinct formats can describe the same call (e.g. a tag wrapping JSON that
-            // also names the tool); keep one entry per name+arguments pair.
+            // Distinct formats can describe the same call (a tag wrapping JSON that also names
+            // the tool); keep one entry per name+arguments pair.
             const key = `${call.name}::${JSON.stringify(call.arguments)}`;
             if (seen.has(key)) return;
             seen.add(key);
@@ -775,9 +755,8 @@ export function parseToolCallsFromText(...chunks) {
 }
 
 /**
- * Remove tool-call markup from user-visible text.
- * Registry-gated formats are only stripped when `options.registry` is supplied; the
- * self-delimiting formats are always stripped.
+ * Remove tool-call markup from user-visible text. Registry-gated formats are only stripped
+ * when `options.registry` is supplied; self-delimiting formats are always stripped.
  *
  * @param {string|undefined|null} text Model output.
  * @param {boolean} [trim] Whether to trim the surviving text.
@@ -894,7 +873,7 @@ const INLINE_BLOCKS = [
 
 /**
  * Close tags for the known block formats. OpenCode streams reasoning and content as
- * separate channels, so a model can open a block in one and close it in the other. The
+ * separate channels, so a model can open a block in one and close it in the other; the
  * channel that only receives the closer must drop it instead of printing it as prose.
  */
 const KNOWN_CLOSE_TAG = new RegExp(
@@ -1006,8 +985,8 @@ export function createToolCallFilter({ disableTools, forceStrip = false, registr
         buffer = '';
         held = false;
         if (!remaining) return '';
-        // Strip whatever markup is actually present and release the rest. Also drop a
-        // trailing orphaned close tag that was still being buffered when the stream ended.
+        // Strip whatever markup is present and release the rest, dropping a trailing
+        // orphaned close tag that was still buffered when the stream ended.
         const stripped = /** @type {string} */ (stripFunctionCallMarkup(remaining, false, { registry }));
         return KNOWN_CLOSE_TAG.test(stripped.trim()) ? '' : stripped;
     };

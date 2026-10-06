@@ -1,14 +1,12 @@
 /**
  * Text-contract primitives for the runtime tool bridge.
  *
- * Clients that declare `tools` speak OpenAI, but the runtime path cannot hand a native
- * tool list to a free-tier model. Instead the tools are virtualized: every declared tool is
- * renamed into the `external__<name>` namespace and described in the prompt, and the model
- * is asked to answer with markup (`<function_calls>{"name":...,"arguments":{}}</function_calls>`).
- * This module owns the vocabulary of that contract — namespaces, risk/side-effect enums,
- * markup and replay tags, call-id rules and the prompts that state the contract — and
- * nothing else. Feature policy lives in `policy.js`, schema validation in `validator.js`,
- * request-level exposure in `router.js`.
+ * The runtime path cannot hand a native tool list to a free-tier model, so declared
+ * tools are virtualized: renamed into the `external__<name>` namespace, described in
+ * the prompt, and asked back as markup
+ * (`<function_calls>{"name":...,"arguments":{}}</function_calls>`). This module owns
+ * that vocabulary only — namespaces, risk/side-effect enums, markup and replay tags,
+ * call-id rules, and the prompts that state the contract.
  *
  * @module tools/contract
  */

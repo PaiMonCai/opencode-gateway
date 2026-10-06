@@ -156,12 +156,11 @@ export function toOpenAIError(error) {
 }
 
 /**
- * Retry policy (architecture §4.5): is this upstream failure worth another
- * attempt? Retries only happen before anything has been streamed.
+ * Retry policy (`docs/ARCHITECTURE.md` §4 item 5): is this upstream failure worth
+ * another attempt? Retries only happen before anything has been streamed.
  *
- * Kept behaviourally identical to the pre-rewrite predicate in `src/proxy.js`:
- * signature match on the message first, then on a `<status>:` prefix or a
- * numeric status on the error object.
+ * Matches on the message first, then on a `<status>:` prefix or a numeric status
+ * on the error object.
  *
  * @param {unknown} error Upstream error.
  * @returns {boolean} Whether the request may be retried.
@@ -226,8 +225,7 @@ const INTERNAL_ERROR_NAMES = new Set([
 
 /**
  * Map an upstream failure onto the route engine's OpenAI-compatible status/body
- * pair. This preserves the historical route contract while keeping the mapping
- * out of the turn orchestrator.
+ * pair, keeping that mapping out of the turn orchestrator.
  *
  * @param {UpstreamErrorLike} error Thrown upstream error.
  * @returns {{statusCode: number, error: {message: string, type: string, code?: string, available_models?: string[]}}}

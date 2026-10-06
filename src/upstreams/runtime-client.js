@@ -1,24 +1,19 @@
 import { resolveLogger, sleep, toMillis } from './support.js';
 
 /**
- * Runtime upstream client.
- *
- * The second upstream shape: drive the local OpenCode runtime through
- * `@opencode-ai/sdk`. It is the only path that can serve the Zen free tier,
- * whose gate is an official-client identity plain HTTP cannot reproduce, and the
+ * Runtime upstream client: drives the local OpenCode runtime through
+ * `@opencode-ai/sdk`. It is the only path that can serve the Zen free tier, whose
+ * gate is an official-client identity plain HTTP cannot reproduce, and the
  * fallback whenever the direct upstream is unavailable or refused.
  *
- * Responsibilities kept here:
- * - session lifecycle (`createSession` / `deleteSession` / `ensureReady`),
- * - one prompt call with timeout and client-abort handling (`prompt`),
- * - reading an existing session back (`messages`),
- * - the two ways an answer is observed: the SDK event stream
- *   ({@link collectFromEvents}) and polling ({@link pollForAssistantResponse}),
- * - the runtime provider catalog (`listModels`).
+ * Owns session lifecycle (`createSession`/`deleteSession`/`ensureReady`), the
+ * timed and abortable `prompt` call, `messages`, the two observers of an answer
+ * ({@link collectFromEvents} and {@link pollForAssistantResponse}) and the
+ * provider catalog ({@link buildModelsList}).
  *
- * Both observation paths filter against the turn baseline: a reused session
- * still holds the previous turns, and reporting their content as this turn's
- * answer is the one bug the rebuild must not reintroduce.
+ * Both observers filter against the turn baseline: a reused session still holds
+ * the previous turns, and reporting their content as this turn's answer is the
+ * failure mode to avoid.
  *
  * @typedef {object} TurnBaseline
  * @property {Set<string>} [messageIds] Message ids that existed before the turn.
@@ -119,8 +114,8 @@ export function buildModelsList(providersList) {
 /**
  * Run one SDK prompt call with a timeout and an optional client-abort race.
  *
- * Rejections carry the same `statusCode`/`code` markers as before:
- * `504 request_timeout` on timeout, `499 client_closed` when the caller aborts.
+ * Rejections carry `statusCode`/`code` markers: `504 request_timeout` on timeout,
+ * `499 client_closed` when the caller aborts.
  *
  * @param {object} options Prompt options.
  * @param {any} options.client SDK client (or a fake with `session.prompt`).
@@ -191,14 +186,13 @@ export async function promptWithTimeout({
 /**
  * Poll a runtime session until its latest assistant message is done.
  *
- * Polling observes partial messages: a reasoning model emits its reasoning part
- * first and the text part only afterwards, so returning on the first non-empty
- * snapshot truncates the answer to the reasoning alone. A partial snapshot is
- * therefore kept only as a timeout fallback; otherwise the loop waits for the
- * message to actually finish.
+ * A reasoning model emits its reasoning part first and the text part only
+ * afterwards, so returning on the first non-empty snapshot would truncate the
+ * answer to the reasoning alone; a partial snapshot is kept only as a timeout
+ * fallback, otherwise the loop waits for the message to finish.
  *
- * Baseline filtering: messages present before the turn started are skipped, so
- * a reused session never reports the previous turn's answer.
+ * Messages present before the turn started are skipped, so a reused session never
+ * reports the previous turn's answer.
  *
  * @param {object} options Poll options.
  * @param {any} options.client SDK client (or a fake with `session.messages`).
@@ -234,14 +228,14 @@ export async function pollForAssistantResponse({
                 const entry = messages[i];
                 const info = entry?.info;
                 if (info?.role !== 'assistant') continue;
-                // A reused session still holds the previous turns. They are finished
-                // and non-empty, so without this filter the previous answer would be
-                // reported as this turn's result.
+                // A reused session still holds the previous turns: they are finished and
+                // non-empty, so without this filter the previous answer is reported as
+                // this turn's result.
                 if (baseline?.messageIds?.size && info.id && baseline.messageIds.has(info.id)) continue;
                 const { content, reasoning, toolParts } = extractFromParts(entry?.parts || []);
                 const error = info?.error || null;
-                // finish === 'tool' marks an intermediate turn that pauses for a tool
-                // result; the assistant is not done producing output yet.
+                // finish === 'tool' marks an intermediate turn pausing for a tool result;
+                // the assistant is not done producing output yet.
                 const finished = info.finish && info.finish !== 'tool';
                 const done = Boolean(finished || info.time?.completed || error);
                 if (toolParts.length > 0) {
@@ -295,7 +289,7 @@ export async function pollForAssistantResponse({
 /**
  * Collect one turn's answer from the SDK event stream.
  *
- * Contract preserved from the monolith:
+ * Contract:
  * - text/reasoning deltas for the session are accumulated, older
  *   `message.part.updated` deltas and newer `message.part.delta` events both work,
  * - the first-delta window resolves `{noData: true}` when no event arrives,
@@ -337,8 +331,8 @@ export async function collectFromEvents({
     const eventStreamResult = await client.event.subscribe({ signal: controller.signal });
     const eventStream = eventStreamResult?.stream;
     if (!eventStream) throw new Error('OpenCode event stream unavailable');
-    // A reused session holds the previous turns' parts. Any event for one of
-    // them belongs to an earlier answer, so it must not feed this turn.
+    // A reused session holds the previous turns' parts; any event for one of them
+    // belongs to an earlier answer and must not feed this turn.
     /**
      * @param {string|{id?: string}} partOrId Part id or part.
      * @returns {boolean} True when the id predates the turn.
@@ -361,10 +355,9 @@ export async function collectFromEvents({
     let deltaChars = 0;
     /** @type {number|null} */
     let firstDeltaAt = null;
-    // Tracks internal OpenCode tool calls that are still pending/running. While any
-    // tool call is active, the stream must stay open even if no text deltas arrive
-    // (the backend is executing the tool). Resolving early here is what previously
-    // truncated streaming responses that relied on internal tool execution.
+    // Internal OpenCode tool calls still pending/running. While any is active the
+    // stream must stay open even with no text deltas, since the backend is executing
+    // the tool; resolving early would truncate the response.
     const activeToolCallIds = new Set();
     const startedAt = now();
 
@@ -393,9 +386,9 @@ export async function collectFromEvents({
             if (idleTimer) clearTimeout(idleTimer);
             idleTimer = setTimeout(() => {
                 if (finished) return;
-                // A tool call is still executing on the backend. Keep the stream open
-                // and wait instead of cutting the response short; the follow-up text
-                // (or the final completion) will arrive once the tool finishes.
+                // The backend is still executing a tool call: keep the stream open and
+                // wait instead of cutting the response short, since the follow-up text (or
+                // the final completion) arrives once the tool finishes.
                 if (activeToolCallIds.size > 0) {
                     log.debug('Event idle while internal tool call is active, continuing to wait', {
                         sessionId,
@@ -430,18 +423,18 @@ export async function collectFromEvents({
             } else if (status === 'completed' || status === 'error') {
                 if (part.id) activeToolCallIds.delete(part.id);
             }
-            // Tool activity means the session is still working; treat it as progress
-            // so the idle timer does not terminate the stream mid-execution.
+            // Tool activity means the session is still working, so it counts as progress
+            // and the idle timer must not terminate the stream mid-execution.
             receivedDelta = true;
             if (firstDeltaTimer) clearTimeout(firstDeltaTimer);
             scheduleIdleTimer();
         };
 
-        // Newer OpenCode servers stream deltas as `message.part.delta` events that
-        // carry only a `partID` (no `part.type`). The part type is announced by the
-        // preceding `message.part.updated` event, so we key partID -> type here and
-        // resolve each delta against it. Without this, reasoning and answer text can
-        // never be told apart and the answer is mis-routed (or dropped) entirely.
+        // Newer OpenCode servers stream deltas as `message.part.delta` events carrying
+        // only a `partID` (no `part.type`), announced by the preceding
+        // `message.part.updated`, so partID -> type is keyed here and each delta resolved
+        // against it. Without that, reasoning and answer text cannot be told apart and
+        // the answer is mis-routed or dropped.
         const partTypeById = new Map();
         /** @param {any} part Message part. */
         const rememberPartType = (part) => {
@@ -475,8 +468,8 @@ export async function collectFromEvents({
             deltaChars += delta.length;
         };
 
-        // A client that walks away must not keep the turn (and its session lock)
-        // alive until the idle or request timeout fires.
+        // A client that walks away must not keep the turn (and its session lock) alive
+        // until the idle or request timeout fires.
         if (externalSignal) {
             const onExternalAbort = () => {
                 if (finished) return;
@@ -525,8 +518,8 @@ export async function collectFromEvents({
                         const info = event.properties.info;
                         if (isStaleMessage(info)) continue;
                         const finish = info.finish;
-                        // An aborted or failed message never produces another delta. Without
-                        // this, the collector waits out the whole first-delta window before
+                        // An aborted or failed message never produces another delta; without
+                        // this the collector waits out the whole first-delta window before
                         // polling rediscovers the same error.
                         if (info.error && !finished) {
                             finished = true;
@@ -541,8 +534,8 @@ export async function collectFromEvents({
                             resolve({ content, reasoning, error: info.error });
                             break;
                         }
-                        // Reconcile active tool calls from the full message snapshot so we
-                        // detect pending tools even when only message.updated fires.
+                        // Reconcile active tool calls from the full message snapshot, so pending
+                        // tools are detected even when only message.updated fires.
                         if (Array.isArray(info.parts)) {
                             for (const part of info.parts) {
                                 rememberPartType(part);
@@ -557,15 +550,15 @@ export async function collectFromEvents({
                             }
                         }
                         if (finish === 'tool') {
-                            // Assistant turn ended pending a tool call; keep waiting for the result.
+                            // The assistant turn ended pending a tool call: keep waiting for the result.
                             if (firstDeltaTimer) clearTimeout(firstDeltaTimer);
                             scheduleIdleTimer();
                             continue;
                         }
                         if (finish === 'stop') {
-                            // Only treat the stream as completed when no tool call is still
-                            // pending. OpenCode may emit an intermediate 'stop' snapshot while a
-                            // tool call is in flight; resolving on it would drop the final answer.
+                            // OpenCode may emit an intermediate 'stop' snapshot while a tool call is
+                            // in flight; resolving on it would drop the final answer, so the stream
+                            // only completes when no tool call is still active.
                             if (activeToolCallIds.size > 0) {
                                 log.debug('Ignoring intermediate stop while tools are active', {
                                     sessionId,
@@ -676,8 +669,8 @@ export function createRuntimeUpstream(
         client,
 
         /**
-         * Verify the runtime answers on `/global/health`, caching success for a
-         * few seconds so a burst of turns does not hammer it.
+         * Verify the runtime answers on `/global/health`, caching success for a few
+         * seconds so a burst of turns does not hammer it.
          *
          * @returns {Promise<boolean>} True when healthy.
          * @throws {Error} When the health endpoint is missing, unhealthy or unreachable.
@@ -734,8 +727,8 @@ export function createRuntimeUpstream(
         },
 
         /**
-         * Delete a session, ignoring failures: the conversation is being dropped
-         * either way and a missing session is not an error.
+         * Delete a session, ignoring failures: the conversation is being dropped either
+         * way and a missing session is not an error.
          *
          * @param {string} id Session id.
          * @returns {Promise<void>} Resolves once the delete was attempted.

@@ -1,8 +1,8 @@
 /**
  * Shared normalization for OpenAI-compatible chat/responses inputs.
  *
- * These helpers are intentionally boring and preserve the route engine's legacy
- * coercion rules exactly so surface-specific builders do not drift apart.
+ * These helpers are intentionally boring so the surface-specific builders cannot
+ * drift apart in how they coerce client content.
  *
  * @module routes/input-normalization
  */

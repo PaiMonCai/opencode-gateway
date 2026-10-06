@@ -1,10 +1,7 @@
 /**
- * Startup exposure safety checks.
- *
- * Parsing configuration and deciding whether it is safe to expose are separate:
- * tests and library consumers can still resolve the documented defaults, while
- * the executable refuses to listen publicly without client authentication unless
- * the operator explicitly opts into that risk.
+ * Startup exposure safety checks: refuse an unauthenticated non-loopback listener
+ * unless the operator opts into the risk. Kept separate from config parsing so
+ * tests and library consumers can still resolve the documented defaults.
  *
  * @module config/exposure
  */

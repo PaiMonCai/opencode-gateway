@@ -1,9 +1,9 @@
 /**
  * Model catalog discovery and client model-name resolution.
  *
- * Runtime catalog entries take precedence; when the runtime catalog is
- * unavailable the direct upstream catalog is used. The resolver preserves the
- * gateway's legacy aliases and 404 error shape.
+ * Runtime catalog entries take precedence, falling back to the direct upstream
+ * catalog; client aliases resolve to catalog ids, and an unknown model keeps the
+ * documented 404 shape carrying the available ids.
  *
  * @module routes/model-resolver
  */

@@ -1,9 +1,7 @@
 /**
- * Tool policy evaluation.
- *
- * A policy context is derived from configuration once per request and then consulted for
- * every parsed call: an allowlist short-circuits to allow, a denylist denies, and anything
- * else falls back to the risk/confirmation rules.
+ * Tool policy evaluation: a context derived from configuration once per request, then
+ * consulted for every parsed call — an allowlist short-circuits to allow, a denylist
+ * denies, and anything else falls back to the risk/confirmation rules.
  *
  * @module tools/policy
  */

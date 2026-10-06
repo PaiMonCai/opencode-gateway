@@ -1,16 +1,10 @@
 /**
- * Conversation store.
- *
- * Owns everything that must survive a request: the tracked conversations, the
- * anchor index that makes derived identity lookup possible, the TTL/LRU caps
- * that bound how many upstream sessions we pay for, and the per-conversation
- * FIFO lock that keeps two turns from prompting one backend session at once.
- *
- * Pure logic: the clock and the session closer are injected, so the whole store
- * can be exercised without timers, HTTP, or an upstream.
+ * Conversation store: the tracked conversations, the anchor index behind derived
+ * identity, the TTL/LRU caps that bound how many upstream sessions are paid for,
+ * and the per-conversation FIFO turn lock. Clock and session closer are injected.
  */
 
-/** Idle conversations are closed after 30 minutes, matching the response store. */
+/** Idle conversations are closed after 30 minutes. */
 export const DEFAULT_CONVERSATION_TTL_MS = 30 * 60 * 1000;
 /**
  * Upper bound on tracked conversations, so a client spraying random session ids
@@ -18,9 +12,9 @@ export const DEFAULT_CONVERSATION_TTL_MS = 30 * 60 * 1000;
  */
 export const DEFAULT_MAX_CONVERSATION_ENTRIES = 1000;
 /**
- * Derived conversations that start from the same anchor (same scope, same first
- * message) are kept apart by their transcript prefix, so a bounded candidate
- * list per anchor is enough to tell one conversation from its look-alikes.
+ * Derived conversations from the same anchor (same scope, same first message) are
+ * told apart by their transcript prefix, so a bounded candidate list per anchor
+ * is enough to tell one conversation from its look-alikes.
  */
 export const DEFAULT_MAX_CONVERSATION_CANDIDATES = 16;
 /** Floor for the turn-lock wait when no request timeout is configured. */
@@ -79,9 +73,8 @@ export const DEFAULT_CONVERSATION_LOCK_TIMEOUT_MS = 5 * 60 * 1000;
  * @param {number} [options.maxCandidates] cap over candidates sharing one anchor
  * @param {number} [options.lockTimeoutMs] default bounded wait for a turn lock
  * @param {((sessionId: string, mode: 'runtime'|'direct') => Promise<void>)|null} [options.closeSession]
- *   closer for a session the store no longer tracks. The caller (registry) is
- *   responsible for skipping direct sessions and sessions a live
- *   `previous_response_id` chain still references.
+ *   closer for a session the store no longer tracks; the caller (registry) skips
+ *   direct sessions and sessions a live `previous_response_id` chain references.
  * @returns {ConversationStore}
  */
 export function createConversationStore({
@@ -103,11 +96,11 @@ export function createConversationStore({
 
     /** @type {Map<string, ConversationEntry>} */
     const entries = new Map();
-    /** Anchor index: conversation start -> entry keys, oldest first. */
-    /** @type {Map<string, Array<string>>} */
+    /** Anchor index: conversation start -> entry keys, oldest first.
+     * @type {Map<string, Array<string>>} */
     const index = new Map();
-    /** Per-conversation FIFO tail; the lock is held until its tail resolves. */
-    /** @type {Map<string, Promise<unknown>>} */
+    /** Per-conversation FIFO tail; the lock is held until its tail resolves.
+     * @type {Map<string, Promise<unknown>>} */
     const locks = new Map();
 
     /**
@@ -168,11 +161,10 @@ export function createConversationStore({
     };
 
     /**
-     * Enforce the LRU cap, oldest `lastUsedAt` first — the same victim order the
-     * monolith used. `sweep` never touches a locked conversation, but the hard
-     * cap does: with more tracked conversations than the cap allows, the cap
-     * wins, and the entry is dropped so the next turn of that conversation
-     * starts clean.
+     * Enforce the LRU cap, oldest `lastUsedAt` first. `sweep` never touches a
+     * locked conversation, but the hard cap does: with more tracked conversations
+     * than the cap allows the cap wins, and the entry is dropped so the next turn
+     * of that conversation starts clean.
      */
     const enforceEntryCap = () => {
         if (entries.size <= entryCap) return;
@@ -197,8 +189,8 @@ export function createConversationStore({
         if (!key) return null;
         const entry = entries.get(key);
         if (!entry) return null;
-        // A locked conversation is mid-turn: it refreshes its own entry when the
-        // turn finishes, so it is never expired out from under the turn.
+        // A locked conversation is mid-turn: it refreshes its own entry when the turn
+        // finishes, so it is never expired out from under the turn.
         if (entry.expiresAt <= now() && !locks.has(key)) {
             entries.delete(key);
             unindex(entry.startKey, key);
@@ -208,8 +200,9 @@ export function createConversationStore({
         return entry;
     };
 
-    /** Keep an in-flight turn from having its session swept out from under it. */
     /**
+     * Keep an in-flight turn from having its session swept out from under it.
+     *
      * @param {string|null|undefined} key
      * @returns {ConversationEntry|null}
      */
@@ -240,8 +233,8 @@ export function createConversationStore({
         /** @type {ConversationEntry} */
         const entry = {
             sessionId: patch.sessionId,
-            // Which upstream owns this session: a runtime session is closed by
-            // the sweep/eviction, a direct one is only a header value we invented.
+            // A runtime session is closed by sweep/eviction; a direct one is only a
+            // header value we invented.
             mode: patch.mode || previous?.mode || 'runtime',
             sentCount: patch.sentCount ?? previous?.sentCount ?? 0,
             sentDigest: patch.sentDigest ?? previous?.sentDigest ?? null,
@@ -346,13 +339,11 @@ export function createConversationStore({
     };
 
     /**
-     * FIFO turn lock per conversation. Two turns must never prompt the same
-     * backend session at the same time; different conversations still run in
-     * parallel.
-     *
-     * A waiter gives up after `timeoutMs` and gets `null` — the caller reports
-     * `503 conversation_busy`. Its place in the queue is still released when
-     * its turn comes, so the queue keeps draining.
+     * FIFO turn lock per conversation: two turns must never prompt the same
+     * backend session at once, while different conversations run in parallel. A
+     * waiter gives up after `timeoutMs` and gets `null` (the caller reports
+     * `503 conversation_busy`), but keeps its place in the queue so the queue
+     * keeps draining.
      *
      * @param {string|null|undefined} key
      * @param {number} [timeoutMs] non-positive waits indefinitely

@@ -1,10 +1,8 @@
 #!/usr/bin/env node
 /**
- * Entry point: configuration, assembly, banner and listening socket.
- *
- * Everything interesting lives in the modules this file wires together:
- * `src/config` (env + config.json), `src/logging`, `src/bootstrap` (the runtime
- * graph) and `src/server` (listening socket, managed backend, shutdown).
+ * Entry point: load configuration, build the runtime graph, print the banner and
+ * listen. The work lives in `src/config`, `src/logging`, `src/bootstrap` and
+ * `src/server`.
  *
  * @module index
  */
@@ -22,8 +20,8 @@ assertSafePublicExposure(config);
 // there is no separate level/format setting.
 const logger = createLogger({ debug: config.DEBUG });
 
-// Settings that no longer exist are ignored, but never silently: one line per
-// name the operator still sets, with what to use instead.
+// Removed settings are ignored, but never silently: one line per name the
+// operator still sets, with what to use instead.
 for (const removed of config.REMOVED_SETTINGS) {
     logger.warn(
         `[Proxy] Removed setting ${removed.name} (${removed.source}) is ignored — ${removed.message}`

@@ -1,11 +1,10 @@
 /**
  * Final reconciliation for streamed external tool-call markup.
  *
- * Streaming parsers and text filters deliberately retain ambiguous suffixes while
- * a turn is live. At end-of-stream those buffers must be flushed, combined with
- * the raw reasoning/content channels, and parsed once more. Some models even open
- * markup in reasoning and close it in content, so a joined-channel retry is
- * required when neither channel yields a complete call by itself.
+ * Streaming parsers and text filters retain ambiguous suffixes while a turn is live, so
+ * at end-of-stream those buffers are flushed, combined with the raw reasoning/content
+ * channels and parsed once more. Some models open markup in reasoning and close it in
+ * content, which is why the joined channels are retried when neither yields a call alone.
  *
  * @module tools/stream-reconciliation
  */

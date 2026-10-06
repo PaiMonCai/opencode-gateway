@@ -4,4 +4,13 @@
  * @module logging
  */
 
-export { createLogger, isDebugEnabled, Logger, LOG_LEVELS, REDACTED, isSecretKey, redact, serializeError } from './logger.js';
+export {
+    createLogger,
+    isDebugEnabled,
+    Logger,
+    LOG_LEVELS,
+    REDACTED,
+    isSecretKey,
+    redact,
+    serializeError
+} from './logger.js';

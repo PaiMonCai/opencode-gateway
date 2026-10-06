@@ -1,9 +1,8 @@
 /**
  * Per-request context: a request id, a start timestamp, a scoped logger and an
- * {@link AbortSignal} that fires when the client disconnects.
- *
- * Nothing outside `src/http/*` touches `req`/`res` (architecture §1), so the
- * layers below receive plain values from here.
+ * {@link AbortSignal} that fires when the client disconnects. Nothing outside
+ * `src/http/*` touches `req`/`res` (`docs/ARCHITECTURE.md` §1), so the layers
+ * below receive plain values from here.
  *
  * @module http/request-context
  */

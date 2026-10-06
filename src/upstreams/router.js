@@ -2,14 +2,12 @@ import { newSessionId } from './direct-client.js';
 import { resolveLogger, toBool } from './support.js';
 
 /**
- * Upstream router.
- *
- * Decides, per turn, whether the request goes to the direct upstream (OpenCode's
- * own OpenAI-compatible endpoints) or to the local runtime, resolves the
- * conversation turn (and with it the per-conversation lock), and owns the one
- * piece of routing state that has to be learned at runtime: a model the direct
- * upstream refuses with `403 FreeTierError` is remembered as runtime-only for an
- * hour, because that refusal is a property of the model, not of the request.
+ * Upstream router: decides per turn whether the request goes to the direct
+ * upstream (OpenCode's own OpenAI-compatible endpoints) or to the local runtime,
+ * resolves the conversation turn (and with it the per-conversation lock), and
+ * remembers for an hour any model the direct upstream refuses with
+ * `403 FreeTierError` — that refusal is a property of the model, not of the
+ * request, so the model is runtime-only.
  *
  * Routing rules (stable, mirrored in `docs/{zh,en}/api-reference.md`):
  *
@@ -69,8 +67,8 @@ export const isFreeTierModelId = (modelID) => /-free$/i.test(String(modelID || '
 /**
  * TTL map of models the direct upstream refused for free-tier reasons.
  *
- * Kept separate from the router so tests can drive the clock and so the state
- * survives a router rebuild if the caller keeps the tracker.
+ * Kept separate from the router so tests can drive the clock and the state
+ * survives a router rebuild when the caller keeps the tracker.
  *
  * @param {object} [options] Tracker options.
  * @param {number} [options.ttlMs] Learning lifetime.
@@ -209,17 +207,15 @@ export function createUpstreamRouter(
          * derive the session id to use.
          *
          * The registry resolution takes the per-conversation turn lock, so `plan()`
-         * is async. The caller owns `turn.release` and MUST call it in a `finally`
-         * block, and must check `busy` before using `sessionId`: when the lock could
-         * not be taken the turn is refused with `conversation_busy`.
+         * is async: the caller owns `turn.release` and MUST call it in a `finally`
+         * block, and must check `busy` before using `sessionId` (a lock that could not
+         * be taken means `conversation_busy`).
          *
-         * `previousSessionId` is only forwarded to the registry for runtime turns.
-         * A direct turn must not be pinned: the id belongs to the upstream
-         * (`previous_response_id` is relayed as-is) and there is no runtime session
-         * state to snapshot, so pinning it would force a baseline read the direct
-         * path never needs — and fail the turn with `session_state_unavailable`
-         * before the upstream is even called (ARCHITECTURE §2: `baseline` is `null`
-         * in direct mode).
+         * `previousSessionId` is forwarded to the registry for runtime turns only: a
+         * direct turn relays `previous_response_id` as-is and has no runtime session
+         * state to snapshot, so pinning it would demand a baseline read the direct path
+         * never needs and fail the turn with `session_state_unavailable`
+         * (ARCHITECTURE §2: `baseline` is `null` in direct mode).
          *
          * @param {PlanDescriptor} descriptor Turn descriptor.
          * @returns {Promise<TurnPlanResult>} Mode, reason, turn and session id.
@@ -253,10 +249,10 @@ export function createUpstreamRouter(
                 turn.providerID = providerID;
                 turn.modelID = modelID;
             }
-            // The registry already decided between reusing an entry's session and
-            // starting fresh; direct turns additionally carry their own conversation
-            // identity (nothing to create upstream), runtime turns need a session the
-            // caller creates when the conversation does not have one yet.
+            // The registry already decided between reusing an entry's session and starting
+            // fresh; a direct turn additionally carries its own conversation identity
+            // (nothing to create upstream), while a runtime turn needs a session the
+            // caller creates when the conversation has none yet.
             const existingSessionId = turn?.sessionId || null;
             const sessionId = mode === 'direct' ? existingSessionId || newSessionId() : existingSessionId;
             log.debug('Upstream planned', {
@@ -275,11 +271,8 @@ export function createUpstreamRouter(
          *
          * A free-tier refusal is remembered for an hour; in every case the direct
          * session mapping is dropped so the retry (or the next turn) starts on the
-         * runtime instead of reusing a session the direct upstream never saw.
-         *
-         * Session state is dropped asynchronously (the registry closes what it owns),
-         * but this stays fire-and-forget so the caller can relay the upstream error
-         * without waiting.
+         * runtime instead of reusing a session the direct upstream never saw. The drop
+         * stays fire-and-forget so the caller can relay the upstream error immediately.
          *
          * @param {any} turn Turn returned by `plan()`.
          * @param {string} reason `'free-tier'`, `'auth'` or `'transport'`
@@ -296,7 +289,7 @@ export function createUpstreamRouter(
                     modelID: turn.modelID
                 });
             }
-            // Direct sessions exist only as a client-side identity, so dropping the
+            // A direct session exists only as a client-side identity, so dropping the
             // entry cannot leak an upstream session.
             if (turn?.mode === 'direct' && turn?.key && typeof registry.discard === 'function') {
                 Promise.resolve(registry.discard({ key: turn.key })).catch((error) => {

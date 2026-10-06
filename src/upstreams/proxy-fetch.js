@@ -1,18 +1,12 @@
 /**
- * Outbound transport for upstream calls, optionally through a proxy.
+ * Outbound transport for upstream calls, optionally through a SOCKS or HTTP(S)
+ * proxy: the same `fetch` signature, abort semantics and a real `Response` back,
+ * so callers cannot tell the difference.
  *
- * The direct upstream reaches `opencode.ai` with `fetch`. When that egress has to
- * go through a SOCKS or HTTP(S) proxy, this module builds a `fetch`-compatible
- * function that dials the proxy instead: the same signature, the same abort
- * semantics, and a real `Response` back, so callers cannot tell the difference.
- *
- * Two properties matter for a gateway:
- *
- * - **loopback is never proxied.** The managed runtime, its health check and the
+ * - **Loopback is never proxied.** The managed runtime, its health check and the
  *   SDK all live on `127.0.0.1`; sending those through an external proxy would
  *   take the deployment down. `localhost`, `127.0.0.0/8` and `::1` always bypass.
- * - **with no proxy configured the built-in `fetch` is returned untouched**, so
- *   the default behaviour (and its tests) are exactly as before.
+ * - **With no proxy configured the built-in `fetch` is returned untouched.**
  *
  * @module upstreams/proxy-fetch
  */
@@ -126,8 +120,8 @@ export function createProxyAgent(proxy) {
 /**
  * Convert a Node response into a `Response` without altering the payload.
  *
- * `rawHeaders` is used instead of the joined `headers` object so repeated headers
- * survive, and the body is piped as bytes: an upstream `content-encoding` is
+ * Uses `rawHeaders` rather than the joined `headers` object so repeated headers
+ * survive, and pipes the body as bytes so an upstream `content-encoding` is
  * relayed exactly as it arrived.
  *
  * @param {import('node:http').IncomingMessage} res Node response.
@@ -265,11 +259,10 @@ export function createUpstreamFetch({
 /**
  * Whether the managed OpenCode runtime can be told to use this proxy.
  *
- * The runtime is a Bun binary and only honours `HTTP_PROXY`/`HTTPS_PROXY`, which
- * it parses as **http(s) proxy** URLs: exporting a `socks5h://` URL there makes
- * every turn fail inside the runtime (observed on opencode 1.18.34: the turn
- * answers `UnknownError` although the process is healthy). A SOCKS egress
- * therefore applies to the direct upstream only.
+ * The runtime is a Bun binary and honours only `HTTP_PROXY`/`HTTPS_PROXY`, parsed
+ * as **http(s) proxy** URLs: exporting a `socks5h://` URL makes every turn fail
+ * inside the runtime (`UnknownError` on a healthy process, seen on opencode
+ * 1.18.34). A SOCKS egress therefore applies to the direct upstream only.
  *
  * @param {string} proxyUrl Configured proxy URL.
  * @returns {boolean} True when the runtime can be handed this proxy.
@@ -284,10 +277,9 @@ export function runtimeCanUseProxy(proxyUrl) {
  * Environment variables a managed runtime needs to route its own egress through
  * the same proxy.
  *
- * Returns an empty patch for a SOCKS proxy: the runtime cannot use one, and
- * exporting the URL anyway is what broke every turn before this check existed
- * (see {@link runtimeCanUseProxy}). `NO_PROXY` always keeps the runtime's own
- * loopback calls local.
+ * Empty for a SOCKS proxy: the runtime cannot use one, and exporting the URL
+ * anyway makes every turn fail (see {@link runtimeCanUseProxy}). `NO_PROXY`
+ * always keeps the runtime's own loopback calls local.
  *
  * @param {string} proxyUrl Proxy URL to export (credentials included).
  * @param {string|string[]} [noProxy] Operator `NO_PROXY` entries.

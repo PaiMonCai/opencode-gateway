@@ -1,18 +1,14 @@
 /**
- * Proxy URLs for outbound upstream calls.
- *
- * Kept separate from the transport so the configuration layer can validate and
- * describe a proxy without importing anything that opens sockets, and so the
- * banner never has to know how a proxy is parsed.
+ * Proxy URLs for outbound upstream calls: parsing and banner description, kept
+ * free of anything that opens sockets so the config layer and the banner never
+ * have to know how a proxy is parsed.
  *
  * @module config/proxy-url
  */
 
 /**
- * Schemes accepted by `OPENCODE_PROXY_UPSTREAM_PROXY`.
- *
- * The `socks5h` / `socks4a` variants resolve the target host at the proxy, which
- * is what a gateway behind a SOCKS-only egress normally needs.
+ * Schemes accepted by `OPENCODE_PROXY_UPSTREAM_PROXY`. The `socks5h` / `socks4a`
+ * variants resolve the target host at the proxy, which a SOCKS-only egress needs.
  */
 export const PROXY_PROTOCOLS = Object.freeze([
     'socks5h:',

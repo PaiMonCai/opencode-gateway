@@ -2,23 +2,16 @@ import crypto from 'crypto';
 import { resolveLogger, toBool, toMillis } from './support.js';
 
 /**
- * Direct upstream client.
+ * Direct upstream client: OpenCode's own OpenAI-compatible endpoints
+ * (`/zen/go/v1` for a Go subscription, `/zen/v1` for pay-as-you-go Zen), which
+ * need nothing more than a valid key and the conversation header.
  *
- * The gateway exists so an OpenAI-format gateway can talk to OpenCode. Two
- * upstream shapes are supported:
- *
- *  - the local OpenCode runtime (required for the Zen free tier, whose gate is
- *    an official-client identity no plain HTTP caller can reproduce), and
- *  - OpenCode's OpenAI-compatible endpoints themselves (`/zen/go/v1` for a Go
- *    subscription, `/zen/v1` for pay-as-you-go Zen), which need nothing more
- *    than a valid key and the conversation header.
- *
- * This module owns the second shape. Both `/chat/completions` and `/responses`
- * exist upstream, so the request body passes through untouched; the only things
- * added are the upstream key, the official client fingerprint, and the stable
- * conversation header. The response is handed back raw so the caller relays
- * upstream errors verbatim, with `model` rewritten back to the client-facing
- * name (including inside Responses events, where it lives on `response.model`).
+ * Both `/chat/completions` and `/responses` exist upstream, so the request body
+ * passes through untouched — the only things added are the upstream key, the
+ * official client fingerprint and the stable conversation header. The response is
+ * handed back raw (upstream errors are relayed verbatim) with `model` rewritten
+ * to the client-facing name, including inside Responses events, where it lives on
+ * `response.model`.
  *
  * @typedef {object} DirectLabels
  * @property {string} id       Fully qualified `provider/model` id.
@@ -64,9 +57,9 @@ export function resolveBaseUrlForProvider(providerID, { goBaseUrl, zenBaseUrl } 
  * treat us as OpenCode itself, plus the conversation identity headers.
  *
  * Every value here is observable upstream and relied upon, so the names and the
- * order of precedence are part of the contract:
- * `user-agent`, `x-opencode-client`, `x-opencode-project`, then the optional
- * `authorization`, `x-opencode-session`, `x-opencode-request`.
+ * order of precedence are contract: `user-agent`, `x-opencode-client`,
+ * `x-opencode-project`, then the optional `authorization`, `x-opencode-session`,
+ * `x-opencode-request`.
  *
  * @param {object} [options] Header inputs.
  * @param {string} [options.apiKey] Upstream key -> `authorization`.
@@ -210,21 +203,20 @@ function findRecordBoundary(text) {
 }
 
 /**
- * Matches one `data:` record and keeps its exact framing: the `data:` prefix,
- * the payload line and the trailing whitespace (which may be absent on a
- * truncated tail record). The payload line stops at either line terminator, so
- * a CRLF record does not lose its `\r` into the payload.
+ * Matches one `data:` record and keeps its exact framing: the `data:` prefix, the
+ * payload line and the trailing whitespace (which may be absent on a truncated
+ * tail record). The payload line stops at either line terminator, so a CRLF record
+ * does not lose its `\r` into the payload.
  *
  * @type {RegExp}
  */
 const SSE_DATA_RECORD = /^(data:[^\S\r\n]*)([^\r\n]*)([\s\S]*)$/;
 
 /**
- * Rewrite one raw SSE record so its `model` fields carry the client-facing
- * name. Records that are not JSON, keepalives and `[DONE]` pass through
- * byte-for-byte, and a rewritten record keeps its original framing — including
- * CRLF separators and a missing trailing blank line on a tail record, which is
- * never synthesized.
+ * Rewrite one raw SSE record so its `model` fields carry the client-facing name.
+ * Records that are not JSON, keepalives and `[DONE]` pass through byte-for-byte,
+ * and a rewritten record keeps its original framing, including CRLF separators
+ * and a missing trailing blank line on a tail record, which is never synthesized.
  *
  * @param {string} record Raw SSE record, with whatever terminator it arrived with.
  * @param {string} modelName Client-facing model name.
@@ -248,11 +240,11 @@ export function rewriteSseRecord(record, modelName) {
 
 /**
  * Rewrite the `model` field of an SSE stream (chat chunks and Responses events
- * alike) so the client keeps seeing the model name it asked for, without
- * buffering or reordering anything else.
+ * alike) so the client keeps seeing the model name it asked for, without buffering
+ * or reordering anything else.
  *
  * Records are split on the separators the SSE spec allows (`\n\n`, `\r\n\r\n`,
- * `\r\r`) and are forwarded with their original separator bytes. A tail record
+ * `\r\r`) and are forwarded with their original separator bytes; a tail record
  * without a terminator is flushed as-is at the end.
  *
  * @param {AsyncIterable<Uint8Array>} source Upstream body stream.
@@ -279,8 +271,8 @@ export async function* rewriteSseModel(source, modelName) {
 }
 
 /**
- * Best-effort answer text of one relayed SSE chunk, used only to fingerprint
- * the answer a client may echo back on the next turn.
+ * Best-effort answer text of one relayed SSE chunk, used only to fingerprint the
+ * answer a client may echo back on the next turn.
  *
  * @param {Uint8Array|string} chunk Raw SSE chunk.
  * @returns {string} Delta text, or `''` when the chunk carries none.
@@ -324,12 +316,12 @@ export function extractAssistantText(payload) {
 }
 
 /**
- * Send one upstream request. Returns the raw response so the caller decides how
+ * Send one upstream request, returning the raw response so the caller decides how
  * to relay it.
  *
  * The caller owns cancellation: pass `signal` (typically a per-turn
- * `AbortController` tied to the client socket). `timeoutMs` is an extra safety
- * net and is only armed when positive; `0` means "no local timer".
+ * `AbortController` tied to the client socket). `timeoutMs` is an extra safety net,
+ * armed only when positive; `0` means "no local timer".
  *
  * @param {object} options Request options.
  * @param {string} [options.baseUrl] Upstream base, e.g. `https://opencode.ai/zen/go/v1`.
@@ -390,11 +382,11 @@ export async function requestUpstream({
 }
 
 /**
- * Cached model catalogs of the direct upstreams. `/models` is public, so this
- * works even when the runtime (and its provider catalog) is not available.
+ * Cached model catalogs of the direct upstreams. `/models` is public, so this works
+ * even when the runtime (and its provider catalog) is not available.
  *
- * Failure semantics: a failed or empty refresh keeps the last good list; only a
- * successful non-empty fetch replaces the cache. `getModels()` never throws.
+ * A failed or empty refresh keeps the last good list: only a successful non-empty
+ * fetch replaces the cache, and `getModels()` never throws.
  *
  * @param {object} [options] Catalog options.
  * @param {typeof fetch} [options.fetchImpl] Fetch implementation.
@@ -484,8 +476,8 @@ export function createModelCatalog({
          */
         async getModels({ apiKey, goBaseUrl, zenBaseUrl, clientVersion } = {}) {
             if (cached && Date.now() - cachedAt < ttlMs) return cached;
-            // Each provider keeps its own last good list: a single upstream being
-            // briefly unreachable must not drop the models the other one serves.
+            // Each provider keeps its own last good list, so a single upstream being
+            // briefly unreachable does not drop the models the other one serves.
             const [goModels, zenModels] = await Promise.all([
                 lastGoodFor('opencode-go', goBaseUrl || DEFAULT_GO_BASE_URL, apiKey, clientVersion),
                 lastGoodFor('opencode', zenBaseUrl || DEFAULT_ZEN_BASE_URL, apiKey, clientVersion)
@@ -521,8 +513,8 @@ export function createModelCatalog({
  * Create the direct upstream.
  *
  * The factory is the frozen interface from `docs/ARCHITECTURE.md` §2; the
- * primitives above stay exported so the routes layer, tests and the router can
- * use them without constructing the whole client.
+ * primitives above stay exported so routes, tests and the router can use them
+ * without constructing the whole client.
  *
  * @param {object} options Factory options.
  * @param {Record<string, any>} [options.config] Config with the environment-style keys

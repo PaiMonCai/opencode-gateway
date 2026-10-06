@@ -1,12 +1,8 @@
 /**
- * Runtime assembly.
- *
- * Builds everything the process needs from a resolved config: the upstream
- * clients, the conversation registry, the upstream router, the turn engine and
- * the Express application. `index.js` only loads config, calls this and listens;
- * keeping the assembly here makes the wiring itself testable (see
- * `tests/contract/boot.test.js`), which is how a missing dependency injection
- * would otherwise reach production unnoticed.
+ * Runtime assembly: builds the upstream clients, conversation registry, upstream
+ * router, turn engine and Express application from a resolved config. `index.js`
+ * only loads config, calls this and listens; keeping the assembly here makes the
+ * wiring testable (`tests/contract/boot.test.js`).
  *
  * @module bootstrap
  */
@@ -40,11 +36,9 @@ import { createUpstreamFetch } from './upstreams/proxy-fetch.js';
  */
 
 /**
- * Pick the fetch the direct upstream should use.
- *
- * An explicitly injected fetch always wins (tests rely on that). Otherwise a
- * configured `UPSTREAM_PROXY` builds a fetch that dials the proxy, and without a
- * proxy the built-in fetch is returned unchanged.
+ * Pick the fetch the direct upstream should use: an injected fetch always wins
+ * (tests rely on that), otherwise a configured `UPSTREAM_PROXY` builds a fetch
+ * that dials the proxy, and without a proxy the built-in fetch is returned.
  *
  * @param {object} options Selection options.
  * @param {import('./config/schema.js').Config} options.config Resolved configuration.
@@ -80,9 +74,8 @@ export function buildRuntime({
         config,
         logger,
         ...(sdk ? { sdk } : {}),
-        // The runtime client only uses this fetch for loopback health checks, and
-        // the proxied fetch always bypasses loopback; inject it only when the
-        // caller did, so the local path keeps using the built-in fetch.
+        // The runtime client only uses this fetch for loopback health checks, and a
+        // proxied fetch bypasses loopback; inject it only when the caller did.
         ...(fetch ? { fetch } : {})
     });
     const direct = createDirectUpstream({

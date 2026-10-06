@@ -1,9 +1,7 @@
 /**
  * Thin adapter around the runtime-client turn primitives.
  *
- * Keeping these wrappers out of the engine makes the engine an assembly layer
- * instead of a second runtime client. No retry or reconciliation policy lives
- * here.
+ * No retry or reconciliation policy lives here; the engine stays an assembly layer.
  *
  * @module routes/runtime-service
  */

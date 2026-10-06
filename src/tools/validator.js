@@ -1,9 +1,9 @@
 /**
  * Tool-call validation against the declared schema.
  *
- * Validation gates execution: a call that fails is never handed to the client, and a
- * call whose arguments do not decode is reported as repairable so callers can retry
- * instead of dropping it.
+ * Validation gates execution: a failing call is never handed to the client, and a call whose
+ * arguments do not decode is reported as repairable so callers can retry instead of dropping
+ * it.
  *
  * @module tools/validator
  */

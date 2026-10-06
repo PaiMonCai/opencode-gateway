@@ -1,12 +1,9 @@
 import { createLogger } from '../logging/index.js';
 
 /**
- * Internal helpers of the upstream layer.
- *
- * Configuration is only ever read from the injected `config` object — these
- * modules never touch `process.env` — and logging goes through the injected
- * `logger`, falling back to `src/logging` so a module built in isolation still
- * produces structured logs.
+ * Internal helpers of the upstream layer. Configuration is read only from the
+ * injected `config` (never `process.env`); logging goes through the injected
+ * `logger`, falling back to `src/logging`.
  *
  * @typedef {import('../logging/index.js').Logger} Logger
  */
@@ -16,12 +13,13 @@ import { createLogger } from '../logging/index.js';
  *
  * Accepted inputs:
  * - a `Logger` from `src/logging` (a scope child is derived when supported),
- * - a legacy `(message, fields) => void` function (used as `debug`),
+ * - a bare `(message, fields) => void` function from an existing caller (used as
+ *   `debug` on every level),
  * - `null`/`undefined`, which falls back to an error-level logger so a module
  *   used without wiring never writes informational noise.
  *
  * @param {any} [logger]
- *   Injected logger (a `Logger`, a legacy function, or nothing).
+ *   Injected logger (a `Logger`, a `(message, fields) => void` function, or nothing).
  * @param {string} [scope] Scope attached to the records.
  * @returns {Logger} A logger that never throws.
  */

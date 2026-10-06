@@ -82,12 +82,10 @@ export function createHttpLayer(options = {}) {
 /**
  * Install the HTTP edge middleware on an Express app.
  *
- * Order matters: CORS first (so preflights are answered before auth), then the
- * request context and auth, then the body parsers. Authenticating before parsing
- * prevents unauthenticated clients from consuming CPU/memory with large bodies.
- * The error and 404 handlers
- * are returned rather than installed, because they must come last — after the
- * routes.
+ * Order matters: CORS first (preflights answer before auth), then the request
+ * context and auth, then the body parsers — authenticating before parsing keeps
+ * unauthenticated clients from consuming memory with large bodies. The error and
+ * 404 handlers are returned rather than installed, because they must come last.
  *
  * @param {import('express').Application} app Express application.
  * @param {HttpLayerOptions} [options] Layer options.

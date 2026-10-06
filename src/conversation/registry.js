@@ -12,9 +12,8 @@
  * Registry.sweep()
  * ```
  *
- * Everything it needs from the outside world (time, the session reader used for
- * baselines, the session closer, the live response chains) is injected, so no
- * HTTP or SDK knowledge lives here.
+ * Time, the session reader, the session closer and the live response chains are
+ * injected, so no HTTP or SDK knowledge lives here.
  */
 
 import {
@@ -33,9 +32,9 @@ import {
 import { snapshotSessionState } from './baseline.js';
 
 /**
- * Coerce the loose truthiness the gateway accepts from env vars and config
- * files. Returns undefined for values that carry no signal, so callers can fall
- * back to their default.
+ * Coerce the loose truthiness the gateway accepts from env vars and config files.
+ * Returns `undefined` for values carrying no signal, so callers fall back to
+ * their default.
  *
  * @param {unknown} value
  * @returns {boolean|undefined}
@@ -62,7 +61,7 @@ export function normalizeBool(value) {
 
 /**
  * Resolve the conversation knobs out of a gateway config object (the env-var
- * shaped config `loadConfig` produces). Keeps today's names and defaults.
+ * shaped config `loadConfig` produces).
  *
  * @param {Record<string, unknown>} [config]
  * @returns {ConversationSettings}
@@ -145,9 +144,9 @@ export function createConversationRegistry({
         ttlMs: settings.ttlMs,
         lockTimeoutMs: lockWaitMs,
         /**
-         * A session the registry no longer tracks is closed — except a direct
-         * session (nothing upstream to close) and a session a live
-         * `previous_response_id` chain still references.
+         * Close a session the registry no longer tracks — except a direct session
+         * (nothing upstream to close) and one a live `previous_response_id` chain
+         * still references.
          *
          * @param {string} sessionId
          * @param {'runtime'|'direct'} mode
@@ -184,8 +183,7 @@ export function createConversationRegistry({
         clientAddress = null
     } = {}) => {
         const messages = Array.isArray(deliverable) ? deliverable : [];
-        // An explicit session header always wins; without one, and only when
-        // derivation is enabled, the conversation is recognised from its content.
+        // An explicit session header wins; derivation only applies without one, when enabled.
         const headerIdentity = readHeaderIdentity({
             headers,
             headerNames: settings.headerNames,
@@ -224,8 +222,8 @@ export function createConversationRegistry({
                 entry = found.entry;
                 store.touch(key);
             } else {
-                // Fresh key per conversation; the lookup hands back the key of
-                // the conversation it recognised instead.
+                // Fresh key per conversation; the lookup returns the key of the
+                // conversation it recognised instead.
                 key = derivedIdentity.entryKey;
                 if (candidates.length) {
                     logger?.debug?.('Derived conversation is ambiguous, starting a new session', {
@@ -235,11 +233,9 @@ export function createConversationRegistry({
             }
         }
 
-        // One line per turn so an operator can answer "did the gateway in front
-        // pass a conversation id at all, and under which name?". When nothing
-        // matched, the names that did arrive are listed: a proxy usually sends
-        // its own id under a name the default list does not know, and that name
-        // just has to be added to OPENCODE_PROXY_SESSION_HEADERS.
+        // So an operator can see whether an id arrived and under which name: a proxy
+        // often sends its own id under an unknown name, listed here, which is added to
+        // OPENCODE_PROXY_SESSION_HEADERS.
         logger?.debug?.('Conversation identity resolved', {
             source: identity.source,
             header: identity.header,
@@ -270,13 +266,11 @@ export function createConversationRegistry({
             };
         }
 
-        // Now that the turn owns the conversation, re-read what the store holds:
-        // while this turn was queued, the lock holder may have extended the same
-        // session (same sessionId, higher sentCount), rotated it, or dropped it.
-        // The store is authoritative, so the captured entry is always replaced —
-        // comparing session ids alone would let a stale sentCount re-send turns
-        // the session already holds (invariant 2). Re-planning from the fresh
-        // state then rotates when the client history did not move past it.
+        // Now that the turn owns the conversation, re-read what the store holds: a
+        // queued turn may have been overtaken (same session, higher sentCount, rotated
+        // or dropped). The store is authoritative, so the captured entry is always
+        // replaced — a stale sentCount would re-send turns the session already holds
+        // (`ARCHITECTURE.md` §2 invariant 2).
         if (key) entry = store.get(key);
 
         const plan = previousSessionId
@@ -285,11 +279,10 @@ export function createConversationRegistry({
         // A rotation (`reuse: false` with an entry present) needs a brand-new
         // session, so the entry's session is deliberately not handed back.
         const sessionId = previousSessionId || (plan.reuse ? entry?.sessionId || null : null);
-        // A session that already holds earlier turns needs its existing ids
-        // recorded, or polling would report the previous answer as this turn's.
-        // A direct session is only a label we invent — upstream has no state to
-        // read — and a direct turn relays the upstream response verbatim, so no
-        // baseline is required (or possible) for it.
+        // A session that already holds turns needs its existing ids recorded, or polling
+        // reports the previous answer as this turn's. A direct session is only a label we
+        // invent (upstream has no state to read) and its response is relayed verbatim, so
+        // no baseline is needed or possible.
         const needsBaseline = plan.reuse && (Boolean(previousSessionId) || entry?.mode !== 'direct');
         const baseline = needsBaseline
             ? await snapshotSessionState({ sessionId, sessionBackend, logger })
@@ -308,10 +301,9 @@ export function createConversationRegistry({
     };
 
     /**
-     * Register the session a planned turn ended up using, so the next turn of
-     * that conversation can reuse it. A no-op for a turn with no conversation
-     * key and for a pinned (previous_response_id) turn: that session belongs to
-     * the response chain, not to this map.
+     * Register the session a planned turn ended up using, so the next turn of that
+     * conversation can reuse it. A no-op without a conversation key and for a pinned
+     * (`previous_response_id`) turn: that session belongs to the response chain.
      *
      * @param {object} params
      * @param {string|null} [params.key]
