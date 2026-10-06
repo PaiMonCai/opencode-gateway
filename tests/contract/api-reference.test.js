@@ -5,10 +5,10 @@ import { jest } from '@jest/globals';
 /**
  * Contract tests for `docs/zh/api-reference.md` and `docs/BEHAVIOUR-SPEC.md`.
  *
- * These are the independent checks the rewrite is accepted against: endpoint
- * set, auth, error bodies and codes, SSE framing and terminal events, usage
- * keys, the upstream selection matrix and the 503/504 semantics. No test binds
- * a fixed port, reaches the network, or needs a real OpenCode runtime.
+ * The checks cover the endpoint set, auth, error bodies and codes, SSE framing
+ * and terminal events, usage keys, the upstream selection matrix and the
+ * 503/504 semantics. No test binds a fixed port, reaches the network, or needs
+ * a real OpenCode runtime.
  */
 
 /** State the fake SDK reads from, driven per test. */
@@ -320,8 +320,8 @@ describe('chat completions contract', () => {
             .map((payload) => JSON.parse(payload));
         expect(records.length).toBeGreaterThan(0);
         // Every record carries the same completion id; the delta chunks also carry
-        // the documented object/model, while the terminal (usage) chunk keeps the
-        // pre-rewrite shape of id + choices + usage.
+        // the documented object/model, while the terminal (usage) chunk keeps its
+        // own shape of id + choices + usage.
         records.forEach((record) => {
             expect(record.id).toMatch(/^chatcmpl-/);
             if (record.object !== undefined) {

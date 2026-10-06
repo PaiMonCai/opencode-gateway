@@ -79,11 +79,9 @@ describe('§3 non-streaming response', () => {
         expect(res.body.usage.output_tokens_details.reasoning_tokens).toBe(Math.ceil('Because'.length / 4));
     });
 
-    test('[FINDING-8 fixed] empty answer text produces an empty output array', async () => {
-        // Defect fixed during verification: the engine used to fall back to
-        // `JSON.stringify(responseRes.data)` and leak the SDK object as the
-        // answer text. BEHAVIOUR-SPEC §3: "Empty output text produces an empty
-        // `output` array rather than a null item".
+    test('empty answer text produces an empty output array', async () => {
+        // BEHAVIOUR-SPEC §3: "Empty output text produces an empty `output` array
+        // rather than a null item".
         const { http } = await assembly({ runtime: { reply: '' } });
         const res = await http.post('/v1/responses').send({ model: 'opencode/big-pickle', input: 'q' });
         expect(res.status).toBe(200);
@@ -117,9 +115,9 @@ describe('§3 non-streaming response', () => {
         expect(fake.calls.created).toHaveLength(0);
     });
 
-    test('[FINDING-7 fixed] an empty input string is rejected as "input is required"', async () => {
-        // Defect fixed during verification. BEHAVIOUR-SPEC §3: "`input`
-        // missing/empty → 400 input is required"; no upstream session may open.
+    test('an empty input string is rejected as "input is required"', async () => {
+        // BEHAVIOUR-SPEC §3: "`input` missing/empty → 400 input is required";
+        // no upstream session may open.
         const { http, fake } = await assembly();
         const res = await http.post('/v1/responses').send({ model: 'opencode/big-pickle', input: '' });
         expect(res.status).toBe(400);

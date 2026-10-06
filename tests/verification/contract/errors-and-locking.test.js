@@ -114,14 +114,11 @@ describe('§6 timeout and upstream error mapping', () => {
     });
 });
 
-test('[FINDING-11 fixed] an unexpected runtime failure answers the documented 500 body', async () => {
+test('an unexpected runtime failure answers the documented 500 body', async () => {
     // api-reference documents 500 as
     // `{"message":"Internal server error","type":"server_error","code":"internal_error"}`.
-    // Before the fix the mapper defaulted to `code = error.code ||
-    // error.constructor.name` and leaked the message (the real-SDK smoke answered
-    // `{"message":"fetch failed","type":"internal_error","code":"TypeError"}`).
-    // Failures that are ours now answer the documented body; a failure the
-    // runtime reported keeps its own message and code (see responses.test.js).
+    // Failures that are ours answer the documented body; a failure the runtime
+    // reported keeps its own message and code (see error-sanitization.test.js).
     const { http } = await assembly({
         runtime: { promptError: () => new TypeError('fetch failed') }
     });
@@ -453,11 +450,9 @@ describe('§6 baseline decision at the assembly level', () => {
         expect(second.body.choices[0].message.content).toBe('Direct answer');
     });
 
-    test('[FINDING-9 fixed] a pinned runtime turn answers 503 session_state_unavailable on a bad snapshot', async () => {
-        // Defect fixed during verification (was: the responses handler threw into
-        // `transformUpstreamError`, whose `statusCode >= 500` branch rewrote the
-        // documented 503 into 502 `server_error`). api-reference documents this
-        // body as `{message, type: 'session_state_unavailable'}` — no `code`.
+    test('a pinned runtime turn answers 503 session_state_unavailable on a bad snapshot', async () => {
+        // api-reference documents this body as
+        // `{message, type: 'session_state_unavailable'}` — no `code`.
         const { http, fake } = await assembly();
         const first = await http.post('/v1/responses').send({
             model: 'opencode/big-pickle',

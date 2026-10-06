@@ -4,11 +4,10 @@ import { jest } from '@jest/globals';
 /**
  * The contract reminder is appended as the last part of a turn.
  *
- * `src/tools/router.js` documents the reminder as the reason an obvious
- * single-tool request went from 4/8 to 8/8 parseable calls: it sits immediately
- * before generation instead of inside the 16KB+ system prompt. The rewrite once
- * dropped it (the producer never exposed the key the call sites read), so this
- * suite pins the wiring rather than just the helper that builds the text.
+ * It sits immediately before generation instead of inside the 16KB+ system
+ * prompt, which measurably raises the parse rate of an obvious single-tool
+ * request. This suite pins the wiring (the producer must expose the key the
+ * call sites read), not just the helper that builds the text.
  */
 const prompts = [];
 

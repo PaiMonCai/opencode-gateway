@@ -116,9 +116,9 @@ describe('§5 routing matrix', () => {
     });
 
     test('a -free model stays on the runtime even when the removed switch asks otherwise', async () => {
-        // The switch is gone: the free tier's gate is a client identity, so a
-        // direct call cannot work. Setting the old name is reported at startup
-        // and must not change the routing.
+        // The free tier's gate is a client identity, so a direct call cannot
+        // work. The removed key is reported at startup and must not change the
+        // routing.
         const { http, fake, directRequests } = await assembly({
             env: { ...DIRECT_ENV, OPENCODE_PROXY_DIRECT_FREE_VIA_RUNTIME: 'false' }
         });

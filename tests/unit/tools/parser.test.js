@@ -376,7 +376,7 @@ describe('createToolCallFilter', () => {
     test('withholds a block that is still open, and drops its orphaned opener at flush', () => {
         const filter = createToolCallFilter({ disableTools: true, registry });
         expect(filter('answer <function_calls>{"name":"ext')).toBe('answer ');
-        // Legacy parity: flush strips the stray `<function_calls>` opener, but a payload
+        // Flush strips the stray `<function_calls>` opener, but a payload
         // whose closing tag never arrived cannot be attributed to a block, so the
         // fragment is released rather than silently swallowed.
         expect(filter.flush()).toBe('{"name":"ext');

@@ -142,7 +142,7 @@ describe('replay lines', () => {
 });
 
 describe('forced follow-up prompt', () => {
-    test('matches the wire wording used before the rewrite', () => {
+    test('matches the documented wire wording', () => {
         expect(buildForcedToolCallPrompt('external__bash')).toBe(
             'SYSTEM: Your previous reply did not emit the required external tool call. ' +
                 'Reply now with ONLY <function_calls>{"name":"external__bash","arguments":{}}</function_calls> ' +

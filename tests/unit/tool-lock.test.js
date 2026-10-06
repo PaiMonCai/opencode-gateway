@@ -15,16 +15,20 @@ const sdkMocks = {
     toolIds: jest.fn(async () => ({ data: ['bash', 'read', 'webfetch'] })),
     sessionCreate: jest.fn(async () => ({ data: { id: 'ses_test' } })),
     sessionPrompt: jest.fn(async () => ({ data: { parts: [{ type: 'text', text: 'ok' }] } })),
-    sessionMessages: jest.fn(async () => ([
+    sessionMessages: jest.fn(async () => [
         { info: { role: 'assistant', finish: 'stop' }, parts: [{ type: 'text', text: 'ok' }] }
-    ])),
+    ]),
     sessionDelete: jest.fn(async () => ({})),
-    eventSubscribe: jest.fn(async () => ({ stream: (async function* () { })() }))
+    eventSubscribe: jest.fn(async () => ({ stream: (async function* () {})() }))
 };
 
 jest.unstable_mockModule('@opencode-ai/sdk', () => ({
     createOpencodeClient: jest.fn(() => ({
-        config: { providers: sdkMocks.configProviders, update: sdkMocks.configUpdate, get: sdkMocks.configGet },
+        config: {
+            providers: sdkMocks.configProviders,
+            update: sdkMocks.configUpdate,
+            get: sdkMocks.configGet
+        },
         tool: { ids: sdkMocks.toolIds },
         session: {
             create: sdkMocks.sessionCreate,
@@ -45,8 +49,7 @@ const engineModule = await import('../../src/routes/engine.js');
 const upstreamsModule = await import('../../src/upstreams/index.js');
 
 /**
- * Build an application the way `index.js` does, with the mocked SDK. Only the
- * import path changed with the rewrite; the assertions below are untouched.
+ * Build an application the way `index.js` does, with the mocked SDK.
  *
  * @param {Record<string, any>} config Gateway config.
  * @returns {{app: import('express').Application}} Application wrapper.
@@ -70,7 +73,14 @@ const createApp = (config) => {
         isSessionHeld: (sessionId) => responseChains.isHeld(sessionId)
     });
     const router = upstreamsModule.createUpstreamRouter({ config, logger, direct, runtime, registry });
-    const app = appModule.createApp({ config, logger, registry, router, responseChains, ensureBackend: async () => {} });
+    const app = appModule.createApp({
+        config,
+        logger,
+        registry,
+        router,
+        responseChains,
+        ensureBackend: async () => {}
+    });
     return { app };
 };
 
@@ -91,10 +101,11 @@ const baseConfig = {
     DEBUG: false
 };
 
-const chat = (app, body) => request(app)
-    .post('/v1/chat/completions')
-    .set('Authorization', 'Bearer k')
-    .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'hi' }], ...body });
+const chat = (app, body) =>
+    request(app)
+        .post('/v1/chat/completions')
+        .set('Authorization', 'Bearer k')
+        .send({ model: 'opencode/big-pickle', messages: [{ role: 'user', content: 'hi' }], ...body });
 
 describe('tool policy with the tool-lock plugin loaded', () => {
     beforeEach(() => {
@@ -107,31 +118,45 @@ describe('tool policy with the tool-lock plugin loaded', () => {
         const res = await chat(app);
 
         expect(res.statusCode).toEqual(200);
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({ body: { title: 'opencode-gateway [tools:none]' } });
+        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({
+            body: { title: 'opencode-gateway [tools:none]' }
+        });
         expect(sdkMocks.sessionPrompt.mock.calls.at(-1)[0].body.tools).toBeUndefined();
         expect(sdkMocks.toolIds).not.toHaveBeenCalled();
     });
 
     test('puts the internal allowlist into the policy instead of a tools map', async () => {
-        const { app } = createApp({ ...baseConfig, DISABLE_TOOLS: true, INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'read'] });
+        const { app } = createApp({
+            ...baseConfig,
+            DISABLE_TOOLS: true,
+            INTERNAL_ALLOWED_TOOLS: ['web_fetch', 'read']
+        });
         await chat(app);
 
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({ body: { title: 'opencode-gateway [tools:webfetch,read]' } });
+        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({
+            body: { title: 'opencode-gateway [tools:webfetch,read]' }
+        });
         expect(sdkMocks.sessionPrompt.mock.calls.at(-1)[0].body.tools).toBeUndefined();
     });
 
     test('external tool bridging still denies every internal tool', async () => {
         const { app } = createApp({ ...baseConfig, DISABLE_TOOLS: true, INTERNAL_ALLOWED_TOOLS: ['read'] });
-        await chat(app, { tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }] });
+        await chat(app, {
+            tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object' } } }]
+        });
 
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({ body: { title: 'opencode-gateway [tools:none]' } });
+        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({
+            body: { title: 'opencode-gateway [tools:none]' }
+        });
     });
 
     test('DISABLE_TOOLS=false allows every tool', async () => {
         const { app } = createApp({ ...baseConfig, DISABLE_TOOLS: false });
         await chat(app);
 
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({ body: { title: 'opencode-gateway [tools:*]' } });
+        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({
+            body: { title: 'opencode-gateway [tools:*]' }
+        });
     });
 
     test('Responses API sessions get the same policy', async () => {
@@ -142,7 +167,9 @@ describe('tool policy with the tool-lock plugin loaded', () => {
             .send({ model: 'opencode/big-pickle', input: 'hi' });
 
         expect(res.statusCode).toEqual(200);
-        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({ body: { title: 'opencode-gateway [tools:none]' } });
+        expect(sdkMocks.sessionCreate).toHaveBeenCalledWith({
+            body: { title: 'opencode-gateway [tools:none]' }
+        });
         expect(sdkMocks.sessionPrompt.mock.calls.at(-1)[0].body.tools).toBeUndefined();
     });
 });
@@ -151,14 +178,20 @@ describe('tool policy without the plugin', () => {
     test('falls back to the per-request tools map', async () => {
         jest.clearAllMocks();
         sdkMocks.configGet.mockResolvedValue({ data: { plugin: [] } });
-        const warn = jest.spyOn(console, 'warn').mockImplementation(() => { });
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
         const { app } = createApp({ ...baseConfig, DISABLE_TOOLS: true });
         await chat(app);
         await chat(app);
 
         expect(sdkMocks.sessionCreate).toHaveBeenCalledWith(undefined);
-        expect(sdkMocks.sessionPrompt.mock.calls.at(-1)[0].body.tools).toEqual({ bash: false, read: false, webfetch: false });
-        expect(warn.mock.calls.filter(([msg]) => String(msg).includes('opencode-gateway-tool-lock.js'))).toHaveLength(1);
+        expect(sdkMocks.sessionPrompt.mock.calls.at(-1)[0].body.tools).toEqual({
+            bash: false,
+            read: false,
+            webfetch: false
+        });
+        expect(
+            warn.mock.calls.filter(([msg]) => String(msg).includes('opencode-gateway-tool-lock.js'))
+        ).toHaveLength(1);
         warn.mockRestore();
     });
 });
@@ -180,7 +213,8 @@ describe('tool-lock plugin', () => {
         }
     };
     let hooks;
-    const run = (sessionID, tool) => hooks['tool.execute.before']({ tool, sessionID, callID: 'c' }, { args: {} });
+    const run = (sessionID, tool) =>
+        hooks['tool.execute.before']({ tool, sessionID, callID: 'c' }, { args: {} });
 
     beforeAll(async () => {
         hooks = await OpencodeGatewayToolLock({ client });
@@ -207,10 +241,12 @@ describe('tool-lock plugin', () => {
 
     test('points native calls to external tools back to the text contract', async () => {
         const hook = hooks['tool.execute.before'];
-        await expect(hook(
-            { tool: 'invalid', sessionID: 'ses_none', callID: 'c' },
-            { args: { tool: 'external__get_weather', error: 'unavailable' } }
-        )).rejects.toThrow('<function_calls>{"name":"external__get_weather"');
+        await expect(
+            hook(
+                { tool: 'invalid', sessionID: 'ses_none', callID: 'c' },
+                { args: { tool: 'external__get_weather', error: 'unavailable' } }
+            )
+        ).rejects.toThrow('<function_calls>{"name":"external__get_weather"');
     });
 
     test('fails closed without a policy or when the lookup fails', async () => {

@@ -1,11 +1,11 @@
 /**
- * Frozen parity corpus for the tool bridge (Phase A).
+ * Frozen parity corpus for the tool bridge.
  *
  * Every string here is either a documented markup variant or output captured verbatim
  * from a live model. `tests/unit/tools/parity.test.js` replays the corpus against
- * `src/tools/**` and compares the result with `golden-outputs.json`, which was recorded
- * from the pre-rewrite `src/tool-runtime/*` implementation (git HEAD, see that file's
- * `meta`). It is a recording of observable behaviour, not a copy of implementation code.
+ * `src/tools/**` and compares the result with `golden-outputs.json`, which records the
+ * observable behaviour of the archived tool runtime at commit
+ * c68e10369b815e991d1c56277f28e98080d10ef8 rather than copying implementation code.
  *
  * Order matters: the golden file stores results as parallel arrays in exactly the
  * iteration order used by the test (documented per describe block in parity.test.js).

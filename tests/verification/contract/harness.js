@@ -1,16 +1,12 @@
 /**
- * Contract-level verification harness (T5 phase 2).
+ * Contract-verification harness: the production assembly from
+ * `src/bootstrap.js` (the same graph `index.js` uses), with only two
+ * dependencies replaced — the OpenCode SDK client (a stateful fake runtime that
+ * keeps per-session messages, so baselines and delta turns are exercised over
+ * real HTTP) and the direct upstream base URLs, pointed at a local stub on port 0.
  *
- * Built on the **real production assembly** (`buildRuntime` from
- * `src/bootstrap.js`, the same graph `index.js` uses) so that a missing
- * dependency injection or a wiring mistake cannot be hidden by a hand-built app.
- * Only two dependencies are replaced:
- *  - the OpenCode SDK client (a stateful fake runtime that keeps per-session
- *    messages, so baselines and delta turns are exercised over real HTTP), and
- *  - the direct upstream base URLs, pointed at a local stub server on port 0.
- *
- * Everything else — config loading, HTTP edge, routes, engine, conversation
- * registry, upstream router — is the production code path.
+ * Everything else is the production code path, so a missing dependency
+ * injection or a wiring mistake cannot be hidden by a hand-built app.
  */
 
 import request from 'supertest';
@@ -192,7 +188,6 @@ export function createFakeRuntime({
  * @param {string[]} [options.deltas] Answer text deltas.
  * @param {string|null} [options.reasoning] Reasoning delta.
  * @param {boolean} [options.omitFinish] Skip the `finish: stop` snapshot.
- * @param {number} [options.idleTimeoutMs] Overall timeout guard for the factory.
  * @returns {() => AsyncIterable<object>}
  */
 export function createEventFactory({

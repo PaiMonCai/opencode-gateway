@@ -7,7 +7,7 @@
  * gateway's taxonomy.
  *
  * Usage: `node tests/verification/smoke/real-upstream-smoke.mjs`
- * Exits non-zero on failure and prints the evidence lines the report quotes.
+ * Exits non-zero on failure and prints one evidence line per observation.
  */
 
 import assert from 'node:assert/strict';

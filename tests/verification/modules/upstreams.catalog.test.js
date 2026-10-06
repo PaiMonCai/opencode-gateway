@@ -157,10 +157,10 @@ describe('createModelCatalog', () => {
         expect(recovered).toHaveLength(3);
     });
 
-    test('[FINDING-3 fixed] a failing provider keeps its own last good models', async () => {
-        // Defect fixed (T3): each provider keeps its own last good list, so a
-        // transient Go-endpoint outage no longer removes the models the zen
-        // catalog still serves.
+    test('a failing provider keeps its own last good models', async () => {
+        // Each provider keeps its own last good list, so a transient
+        // Go-endpoint outage does not drop the models the zen catalog still
+        // serves.
         const fixture = createCatalogStub();
         const server = await fixture.start();
 
@@ -182,7 +182,7 @@ describe('createModelCatalog', () => {
         ]);
     });
 
-    test('[FINDING-3 fixed] the healthy provider still refreshes when the other one fails', async () => {
+    test('the healthy provider still refreshes when the other one fails', async () => {
         const fixture = createCatalogStub();
         const server = await fixture.start();
 
