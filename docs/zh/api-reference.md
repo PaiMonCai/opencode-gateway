@@ -7,8 +7,8 @@ Base URL：`http://127.0.0.1:10000`。配置了 `API_KEY` 时，`/v1/*` 请求�
 | 方法 | 路径 | 说明 |
 |:-----|:-----|:-----|
 | `GET` | `/health` | 健康检查 |
-| `GET` | `/health/details` | 结构化诊断（开关/鉴权可配置） |
-| `GET` | `/metrics` | Prometheus 指标（开关/鉴权可配置） |
+| `GET` | `/health/details` | 结构化诊断（由 `OPENCODE_PROXY_OPS` 控制是否暴露；始终要求 Bearer） |
+| `GET` | `/metrics` | Prometheus 指标（`OPENCODE_PROXY_OPS=full` 时暴露；始终要求 Bearer） |
 | `GET` | `/v1/models` | 模型列表（runtime 不可用时改由上游公开目录提供） |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |

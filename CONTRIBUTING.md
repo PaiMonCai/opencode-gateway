@@ -13,7 +13,10 @@ This project is a **compatibility layer between an OpenAI-format gateway and Ope
 
 Out of scope: general gateway features (multi-upstream routing, billing, quotas, tenancy, key pools), and reimplementing the model provider itself.
 
-Two files carry most of the design: `src/proxy.js` (routing, conversations, tool policy) and `src/upstream/direct-client.js` (the direct upstream). Change one and you usually look at the other.
+The design lives in `src/`: routing and conversations in `src/conversation/` and
+`src/routes/`, the two upstream paths in `src/upstreams/` (direct client, runtime
+client, router), and the tool policy in `src/tools/` plus `plugin/`. Read
+[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) before changing a boundary.
 
 ## Code of Conduct
 
@@ -41,7 +44,7 @@ Please be respectful and professional. We follow the [Contributor Covenant](http
 1. Fork the repository (maintainers branch off `main` directly)
 2. Create a feature branch: `git checkout -b feature/your-feature`
 3. Make your changes
-4. Run tests: `npm run test:all` (unit + contract + independent verification; the conversation layer and the direct upstream each have their own suite)
+4. Run tests: `npm run test:all` (unit + contract + verification; the conversation layer and the direct upstream each have their own suite)
 5. Commit with clear messages (see Commit Style below)
 6. Push to your fork
 7. Submit a Pull Request

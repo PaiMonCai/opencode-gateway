@@ -5,16 +5,15 @@
 reassembles their stateless requests into conversations, routes each model to the
 upstream that can serve it, and relays what comes back faithfully.
 
-This document is the **contract for the rewrite**: module boundaries, interfaces,
+This document is the **architecture contract**: module boundaries, interfaces,
 invariants, and the rules that must not change. Anything not written here is an
 implementation detail.
 
 Companion documents:
 
-- [`docs/BEHAVIOUR-SPEC.md`](./BEHAVIOUR-SPEC.md) — the wire-level behaviour the
-  rewrite must reproduce (request fields, response and SSE shapes, tool contract,
-  error table, ops surfaces). Implement from it, never by transplanting the
-  previous implementation.
+- [`docs/BEHAVIOUR-SPEC.md`](./BEHAVIOUR-SPEC.md) — the wire-level behaviour this
+  service must produce (request fields, response and SSE shapes, tool contract,
+  error table, ops surfaces).
 - [`docs/zh/api-reference.md`](./zh/api-reference.md) / [`docs/en/api-reference.md`](./en/api-reference.md)
   — the user-facing contract. It wins over the behaviour spec if they disagree.
 
@@ -40,7 +39,7 @@ Companion documents:
    src/upstreams/direct   src/upstreams/runtime
      (OpenAI HTTP)          (@opencode-ai/sdk + opencode serve)
 
-  cross-cutting: src/config · src/logging · src/errors · src/tools · src/models
+  cross-cutting: src/config · src/logging · src/errors · src/tools · src/concurrency
 ```
 
 Rules:
@@ -48,7 +47,7 @@ Rules:
 - a layer may only import from layers **below** it and from `src/config`,
   `src/logging`, `src/errors`;
 - thin route adapters (`chat.js`, `responses.js`, `health.js`, `models.js`) contain no business logic;
-- `routes/engine.js` remains the turn orchestrator, while low-coupling collaborators are extracted into focused modules such as `operations.js` and `model-resolver.js`;
+- `routes/engine.js` is the turn orchestrator, while low-coupling collaborators live in focused modules such as `operations.js` and `model-resolver.js`;
 - nothing outside `src/upstreams/*` knows about the SDK or upstream `fetch`;
 - Express `req`/`res` may appear only in the HTTP edge and route/operational surface modules, not in conversation/upstream/tool state modules.
 
@@ -199,10 +198,9 @@ identity headers. Upstream errors are relayed verbatim (status + body). A `401`/
 
 ### src/tools
 
-Text-contract tooling for the runtime path only (`contracts`, `parser`,
+Text-contract tooling for the runtime path only (`contract`, `parser`,
 `registry`, `router`, `policy`, `validator`, internal allowlist resolution).
-Same observable behaviour as today:
-client `tools` are exposed as a text contract, native calls are steered back, and
+Client `tools` are exposed as a text contract, native calls are steered back, and
 the execution-time plugin enforces the policy carried in the session title.
 
 ### src/http and src/routes
@@ -227,7 +225,7 @@ createOperationalSurface({
 Routes: `GET /health`, `GET /health/details`, `GET /metrics`,
 `GET /v1/models`, `POST /v1/chat/completions`, `POST /v1/responses`.
 
-Current modularization boundary:
+Module boundaries:
 
 - `engine.js`: Chat/Responses turn orchestration and conversation/session state transitions;
 - `runtime-attempt.js`: prompt dispatch + stream/poll observation ordering;
@@ -261,12 +259,14 @@ change it.
   `npm run lint` / `npm run format:check` must pass in CI.
 - **Tests**: Jest + supertest, ESM (`--experimental-vm-modules`), one suite per
   module under `tests/unit/<module>/`, plus `tests/contract/` for the documented
-  HTTP contract and `tests/e2e/` for the real-runtime smoke test.
+  HTTP contract, `tests/verification/` for the suites that re-check that contract
+  from scratch, and `tests/e2e/` for the real-runtime smoke test.
 - **Coverage**: `npm run test:coverage`, thresholds only ratchet upwards.
-- **CI**: every push/PR runs lint + typecheck + unit + contract tests; the image
-  workflow stays tag-driven. CI must not require an OpenCode runtime or network.
+- **CI**: every push/PR runs lint + typecheck + `npm run test:all` (unit +
+  contract + verification); the image workflow stays tag-driven. CI must not
+  require an OpenCode runtime or network.
 
-## 4. Behaviour that must survive the rewrite
+## 4. Behaviour contract
 
 1. SSE streaming for chat completions and Responses, including `[DONE]`.
 2. `previous_response_id` chaining with a 30-minute TTL for the runtime path.
@@ -298,31 +298,13 @@ bearing and are easy to break while editing:
    hook by name and calls it without checking that the plugin defined one, so a
    plugin with fewer hooks fails every prompt before the model is reached.
 
-Both were verified against a real `opencode serve` 1.18.34: with the rules
-respected a prompt answers normally and the policy still denies a `[tools:none]`
-session while allowing a `[tools:*]` one; violating either rule answers 500 on
-every turn. `tests/unit/tool-lock.test.js` pins the export surface and the hook
+Both rules hold against a real `opencode serve` 1.18.34: with them respected a
+prompt answers normally and the policy still denies a `[tools:none]` session while
+allowing a `[tools:*]` one; violating either rule answers 500 on every turn.
+`tests/unit/tool-lock.test.js` pins the export surface and the hook
 set, and `docs/{zh,en}/troubleshooting.md` documents the symptom.
 
 The same reasoning applies to the tool list: the runtime rejects a request whose
 tool list differs from the official client's, which is why the proxy leaves the
 list alone and enforces the policy inside the plugin instead of stripping tools
 per request.
-
-## 5. Migration order
-
-The rewrite lands module by module, each step keeping `npm test` green:
-
-1. `src/config`, `src/logging`, `src/errors`, `src/http` + tooling (CI, lint,
-   types) — no behaviour change;
-2. `src/conversation` (pure logic, unit-tested in isolation) + contract tests for
-   the conversation invariants in §2;
-3. `src/upstreams` (direct client first — it has no runtime dependency — then the
-   runtime client) + `plugin/`;
-4. `src/tools` + `src/routes` + `src/app.js` + `index.js` wiring; delete the old
-   `src/proxy.js` monolith in the same change;
-5. docs, `docs/ARCHITECTURE.md` sync, and the final parity pass against
-   `docs/{zh,en}/api-reference.md`.
-
-Until step 5 completes, the old `src/proxy.js` keeps serving production traffic;
-new modules are wired in behind it as they become ready.
