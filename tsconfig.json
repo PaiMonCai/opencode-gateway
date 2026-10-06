@@ -18,5 +18,5 @@
         "skipLibCheck": true
     },
     "include": ["src/**/*.js", "src/**/*.d.ts", "plugin/**/*.js"],
-    "exclude": ["node_modules", "coverage", "src/proxy.js", "src/tool-runtime/**", "src/upstream/**"]
+    "exclude": ["node_modules", "coverage"]
 }

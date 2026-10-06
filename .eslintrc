@@ -1,6 +1,6 @@
 {
     "root": true,
-    "comment": "Legacy eslintrc kept in sync with eslint.config.js for editors that still read it. ESLint 9+ uses the flat config; this file is ignored by the CLI. MIGRATION: the ignorePatterns below are the pre-rewrite files architecture §5 step 4 deletes; T4 must empty them.",
+    "comment": "Legacy eslintrc kept in sync with eslint.config.js for editors that still read it. ESLint 9+ uses the flat config; this file is ignored by the CLI.",
     "env": {
         "node": true,
         "es2023": true,
@@ -11,17 +11,7 @@
         "sourceType": "module"
     },
     "extends": ["eslint:recommended"],
-    "ignorePatterns": [
-        "node_modules/",
-        "coverage/",
-        "index.js",
-        "src/proxy.js",
-        "src/tool-runtime/",
-        "src/upstream/",
-        "tests/unit/*.test.js",
-        "tests/integration/",
-        "tests/manual/"
-    ],
+    "ignorePatterns": ["node_modules/", "coverage/"],
     "rules": {
         "no-unused-vars": ["error", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrors": "none" }],
         "no-console": "off",
