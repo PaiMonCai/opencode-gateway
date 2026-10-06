@@ -7,8 +7,8 @@ Base URL: `http://127.0.0.1:10000`. When `API_KEY` is set, `/v1/*` requests need
 | Method | Path | Description |
 |:-----|:-----|:-----|
 | `GET` | `/health` | Health check |
-| `GET` | `/health/details` | Structured diagnostics (toggleable/auth-gated) |
-| `GET` | `/metrics` | Prometheus metrics (toggleable/auth-gated) |
+| `GET` | `/health/details` | Structured diagnostics (exposed when `OPENCODE_PROXY_OPS` is `health` or `full`; Bearer always required) |
+| `GET` | `/metrics` | Prometheus metrics (exposed when `OPENCODE_PROXY_OPS=full`; Bearer always required) |
 | `GET` | `/v1/models` | List models (falls back to the public upstream catalogs when the runtime is unavailable) |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |

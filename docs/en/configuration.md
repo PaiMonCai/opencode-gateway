@@ -19,9 +19,8 @@ Env vars use the `OPENCODE_` prefix; config.json uses the short names (see table
 
 ### Merged and removed settings
 
-These names **still work** (setting one takes effect) but print a deprecation
-warning at startup naming the replacement, and they no longer appear in the
-regular tables above.
+These names are **removed**: setting one has no effect. Startup logs one line
+naming the replacement, and they no longer appear in the regular tables above.
 
 - `OPENCODE_HEALTH_DETAILS_ENABLED` / `_REQUIRE_AUTH`, `OPENCODE_METRICS_ENABLED` / `_REQUIRE_AUTH` → **removed**; use `OPENCODE_PROXY_OPS=off|health|full` (both detail endpoints always require the bearer key)
 - `OPENCODE_PROXY_AUTO_CLEANUP_CONVERSATIONS`, `OPENCODE_PROXY_CLEANUP_INTERVAL_MS`, `OPENCODE_PROXY_CLEANUP_MAX_AGE_MS` → **removed**; use `OPENCODE_PROXY_STORAGE_CLEANUP=off|hourly|daily`
@@ -73,7 +72,7 @@ not a recommended public deployment.
 | `OPENCODE_DISABLE_TOOLS` | `DISABLE_TOOLS` | `true` | Disable OpenCode built-in tools |
 | `OPENCODE_EXTERNAL_TOOLS_MODE` | `EXTERNAL_TOOLS_MODE` | `proxy-bridge` | External tool bridge mode, only `proxy-bridge` is supported |
 | `OPENCODE_INTERNAL_ALLOWED_TOOLS` | `INTERNAL_ALLOWED_TOOLS` | (empty) | Built-in tools allowed when request has no `tools`, comma-separated |
-| `OPENCODE_INTERNAL_WEB_FETCH_ENABLED` | `INTERNAL_WEB_FETCH_ENABLED` | `false` | Legacy switch: allows `web_fetch` by default when no allowlist is set |
+| `OPENCODE_INTERNAL_WEB_FETCH_ENABLED` | `INTERNAL_WEB_FETCH_ENABLED` | `false` | Allows `web_fetch` when no allowlist is set |
 
 ### Prompts & Sessions
 
@@ -254,7 +253,7 @@ OpenCode Zen free models only accept requests whose tool list matches the offici
 
 - When a request has **no** `tools`, the proxy enters internal allowlist mode. Only tools in `OPENCODE_INTERNAL_ALLOWED_TOOLS` are allowed.
 - Tool names are compared ignoring case and underscores, so `web_fetch` matches OpenCode's `webfetch`.
-- `OPENCODE_INTERNAL_WEB_FETCH_ENABLED=true` is a legacy shortcut: treated as `web_fetch` when no allowlist is set.
+- `OPENCODE_INTERNAL_WEB_FETCH_ENABLED=true` is treated as `web_fetch` when no allowlist is set.
 - The internal tool counters (mode selection, tool discovery, match results, fallback reasons) are **always collected** and exported on `/metrics`; tool return content is never logged.
 
 ### Request-level Allowlist Override

@@ -1,12 +1,11 @@
 # Behaviour spec
 
-Wire-level behaviour the rewrite must reproduce. This is a specification, not a
-description of the current code: it was extracted from the observable contract
-(HTTP responses, stream event sequences, error bodies, plugin semantics) plus the
-documented API in `docs/{zh,en}/api-reference.md`. Implement from here, not by
-transplanting the previous implementation.
+Wire-level behaviour this service must produce. It is extracted from the
+observable contract (HTTP responses, stream event sequences, error bodies, plugin
+semantics) plus the documented API in `docs/{zh,en}/api-reference.md`, and it is
+the authority for anything a refactor must not change.
 
-Anything explicitly listed as **ignored** today must stay ignored (or be rejected)
+Anything explicitly listed as **ignored** here must stay ignored (or be rejected)
 in the same way, so gateways see no surprise change.
 
 ## 1. Endpoints and auth
@@ -14,11 +13,13 @@ in the same way, so gateways see no surprise change.
 | Method | Path | Auth | Notes |
 |:--|:--|:--|:--|
 | GET | `/health` | none | `{"status":"ok","proxy":true}`, always 200 while the process lives |
-| GET | `/health/details` | `HEALTH_DETAILS_REQUIRE_AUTH` | structured diagnostics (§7) |
-| GET | `/metrics` | `METRICS_REQUIRE_AUTH` | Prometheus text (§7) |
+| GET | `/health/details` | Bearer always | structured diagnostics; exposed when `OPENCODE_PROXY_OPS` is `health` or `full` (§7) |
+| GET | `/metrics` | Bearer always | Prometheus text; exposed only when `OPENCODE_PROXY_OPS=full` (§7) |
 | GET | `/v1/models` | Bearer when `API_KEY` set | runtime catalog, else upstream catalogs, else one fallback model |
 | POST | `/v1/chat/completions` | Bearer when `API_KEY` set | streaming and non-streaming |
 | POST | `/v1/responses` | Bearer when `API_KEY` set | streaming and non-streaming, `previous_response_id` chaining |
+| any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
+
 **Outbound proxy**: when `OPENCODE_PROXY_UPSTREAM_PROXY` (or the standard
 `ALL_PROXY`/`HTTPS_PROXY`/`HTTP_PROXY` fallbacks) is set, direct upstream calls
 and the model-catalog fetches dial the proxy; loopback targets always bypass it,
@@ -40,14 +41,11 @@ remove queued waiters immediately. The order is deliberately conversation lock �
 global capacity so duplicate turns from one conversation cannot consume multiple
 global permits while waiting on each other.
 
-| any | other | — | `404 {"error":{"message":"Route not found: GET /nope","type":"not_found_error"}}` (keep this informative shape; a bare `Not found` is not enough for a gateway operator) |
-
 Malformed JSON bodies answer `400 {"error":{"message":"Invalid JSON in request body",...}}`
 and an oversized body `400 {"error":{"message":"Request body too large",...}}`.
 
 Auth failure: `401 {"error":{"message":"Invalid API key","type":"invalid_request_error","code":"invalid_api_key"}}`
-(the documented OpenAI-shaped body; the pre-rewrite code answered a bare
-`{"message":"Unauthorized"}`, and this rewrite aligns to the published contract).
+(the published OpenAI-shaped body).
 
 **Startup exposure guard**: an empty `API_KEY` is only permitted when `BIND_HOST`
 is explicitly loopback-only (`127.0.0.0/8`, `::1`, or `localhost`). A non-loopback
@@ -187,7 +185,7 @@ In order, each as `data: <json>\n\n` with an increasing `sequence_number`:
 `response.completed`, then `data: [DONE]`.
 
 On failure after headers are sent: a `response.failed` event followed by
-`[DONE]` — never a second `res.json()` (that used to kill the process).
+`[DONE]` — never a second `res.json()`.
 
 ### Chaining
 
@@ -224,12 +222,11 @@ mode the id belongs to the upstream and is forwarded untouched.
 In direct mode tools pass through natively; the text contract and the plugin are
 not involved.
 
-**Known edge case kept for parity**: when a stream ends *inside* a tool-call
-block, the filter only drops the stray opening tag — the unterminated payload is
-released as ordinary text (for example `{"name":"ext`). This is the pre-rewrite
-behaviour, verified identical in the rewrite's parity corpus, and it is reachable
-only with tools disabled and a truncated stream. Changing it is a deliberate
-behaviour change and needs its own changelog entry, not a silent fix.
+**Known edge case**: when a stream ends *inside* a tool-call block, the filter only
+drops the stray opening tag — the unterminated payload is released as ordinary text
+(for example `{"name":"ext`). It is reachable only with tools disabled and a
+truncated stream. Changing it is a deliberate behaviour change and needs its own
+changelog entry, not a silent fix.
 
 ## 5. Upstream routing
 
@@ -283,14 +280,13 @@ unavailable`, `internal server error`, `bad gateway`, `service unavailable`,
 ## 7. Operational surfaces
 
 Startup banner (stdout, one line per setting): port, bind host, backend URL,
-backend password `Configured|Not configured`, OpenCode path, API key, Zen API
-key, disable tools, manage backend, external tools mode/conflict policy, internal
-web_fetch, internal allowed tools, internal tool metrics, discovery fixture,
-health details enabled/require auth, metrics enabled/require auth, use isolated
-home, session reuse (`ttl ...s, headers: ...`), session identity derivation,
-direct upstream (`go: ..., zen: ...`), free-tier/fallback switches, request
-timeout, global turn concurrency/pending/wait limits, prompt mode, omit system
-prompt, auto cleanup, cleanup interval/max age, event idle/first-delta timeouts,
+backend password `Configured|Not configured`, API key, public no-auth override,
+Zen API key, manage backend, OpenCode path, isolated home, disable tools, external
+tools mode, internal `web_fetch`, internal allowed tools, ops endpoints, prompt
+mode, omit system prompt, storage cleanup, request timeout, global turn
+concurrency/pending/wait limits, event idle/first-delta timeouts, session reuse
+(`ttl ...s, headers: ...`), session identity derivation, direct upstream
+(`go: ..., zen: ...`), upstream proxy and whether the managed runtime uses it,
 debug.
 
 `/health/details` → `{"status","proxy","concurrency":{"active","pending","maxConcurrent","maxPending","waitTimeoutMs","rejectedTotal","timedOutTotal","abortedTotal"},"internal_tools":{"config":{"allowed_tools","metrics_enabled","discovery_fixture"},"metrics":{"externalBridgeRequests","internalAllowlistRequests","disabledRequests","discoveryFailures","fallbackToDisabled"},"cache":{"tool_ids_cached","tool_id_count","age_ms"},"audit":{"available","fields":[...]}}}`.
@@ -314,12 +310,10 @@ Every environment variable name, default, and `config.json` key documented in
 `docs/{zh,en}/configuration.md` is part of the contract and must not change.
 Precedence: environment > `config.json` > built-in default.
 
-Deliberate hardenings of the previous behaviour (approved with the rewrite):
+Configuration rules:
 
-- a malformed `config.json` fails fast instead of warning and continuing;
-- a non-numeric `PORT` (including `0`) is rejected instead of silently falling
-  back to 10000;
-- an empty environment variable means "unset" everywhere (the previous code
-  treated `''` as `false` for most booleans);
+- a malformed `config.json` fails fast;
+- a non-numeric `PORT` (including `0`) is rejected;
+- an empty environment variable means "unset" everywhere;
 - the startup banner reports the effective event-timeout defaults
-  (`8000ms` / `30000ms`) rather than "default".
+  (`8000ms` / `30000ms`).
