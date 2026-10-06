@@ -1,11 +1,10 @@
 /**
  * Pure tool-policy helpers for the runtime plugin.
  *
- * Kept in a **separate module on purpose**: opencode 1.18 loads every function a
- * plugin file exports as a plugin of its own, and the bogus entries it registers
- * make `Plugin.trigger` fail on every turn (`TypeError: null is not an object`).
- * Only `opencode-gateway-tool-lock.js` may be listed in the runtime's `plugin`
- * configuration, and that file therefore exports a single factory.
+ * Kept in a **separate module on purpose**: opencode 1.18 loads every function a plugin
+ * file exports as a plugin of its own, and the bogus entries it registers make
+ * `Plugin.trigger` fail on every turn (`TypeError: null is not an object`). Only
+ * `opencode-gateway-tool-lock.js` may be listed in the runtime's `plugin` configuration.
  *
  * @module plugin/tool-policy
  */
@@ -67,8 +66,8 @@ export const denyMessage = (tool) => `Tool "${tool}" is disabled by opencode-gat
 /**
  * Steer a native call to a bridged external tool back to the text contract.
  *
- * External tools only exist as text in the system prompt; models that call them
- * natively land in OpenCode's "invalid" tool.
+ * External tools only exist as text in the system prompt; models that call them natively
+ * land in OpenCode's "invalid" tool.
  *
  * @param {string} requested Requested tool name.
  * @returns {string} Error message.
@@ -76,12 +75,3 @@ export const denyMessage = (tool) => `Tool "${tool}" is disabled by opencode-gat
 export const externalToolMessage = (requested) =>
     `${requested} is not a native tool. Call it by replying with only ` +
     `<function_calls>{"name":"${requested}","arguments":{...}}</function_calls>`;
-
-/**
- * Build the tool-lock plugin.
- *
- * @param {object} input Plugin context.
- * @param {any} input.client OpenCode SDK client (`session.get` is used).
- * @returns {Promise<{ 'tool.execute.before': (input: any, output: any) => Promise<void> }>}
- *   Plugin hooks.
- */

@@ -1,9 +1,8 @@
 // Hard-disable plugin: refuses every tool and every permission request.
 //
-// Use this only when the proxy's session-title policy is not wanted and no tool
-// may run at all; the default plugin (`opencode-gateway-tool-lock.js`) is the
-// one that keeps Zen free-tier models usable by enforcing the policy carried in
-// the session title.
+// Use this only when the proxy's session-title policy is not wanted and no tool may run
+// at all; the default plugin (`opencode-gateway-tool-lock.js`) is the one that keeps Zen
+// free-tier models usable by enforcing the policy carried in the session title.
 
 /**
  * Build the deny-everything plugin.

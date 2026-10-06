@@ -1,15 +1,14 @@
 // OpenCode server plugin loaded by the backend that opencode-gateway starts.
 //
-// OpenCode Zen's free tier rejects any request whose tool list differs from
-// the one the official client sends ("free tier can only be used from within
-// OpenCode"). Disabling tools per request strips them from that list, so the
-// proxy leaves the list alone and enforces its tool policy here, at execution
-// time, instead.
+// OpenCode Zen's free tier rejects any request whose tool list differs from the one the
+// official client sends ("free tier can only be used from within OpenCode"). Disabling
+// tools per request strips them from that list, so the proxy leaves the list alone and
+// enforces its tool policy here, at execution time, instead.
 //
-// The policy is carried in the session title the proxy sets when it creates a
-// session: "[tools:none]", "[tools:*]" or "[tools:webfetch,read]". Sessions
-// without a policy (and failed lookups) deny every tool. Child sessions spawned
-// by the task tool inherit the policy of their parent.
+// The policy is carried in the session title the proxy sets when it creates a session:
+// "[tools:none]", "[tools:*]" or "[tools:webfetch,read]". Sessions without a policy (and
+// failed lookups) deny every tool; child sessions spawned by the task tool inherit the
+// policy of their parent.
 //
 // **Loader contract (opencode 1.18).** Two rules keep the runtime alive:
 //
@@ -22,9 +21,6 @@
 //    therefore has exactly one export (the default factory) and keeps its pure
 //    helpers in `./tool-policy.js`, which must never appear in the runtime's
 //    `plugin` configuration.
-//
-// Verified against opencode 1.18.34: a real runtime with this plugin answers a
-// prompt normally, while the same runtime breaks on the two violations above.
 
 import { MAX_DEPTH, toolMatches, parsePolicy, denyMessage, externalToolMessage } from './tool-policy.js';
 
@@ -78,9 +74,9 @@ const OpencodeGatewayToolLock = async ({ client }) => {
      * @returns {Promise<void>} Resolves when the tool may run.
      */
     const enforceToolPolicy = async (input, output) => {
-        // External tools only exist as a text contract in the system prompt.
-        // Models that call them natively land in OpenCode's "invalid" tool;
-        // point them back to the contract instead of letting them flail.
+        // External tools exist only as a text contract in the system prompt, so a model
+        // calling one natively lands in OpenCode's "invalid" tool: point it back to the
+        // contract instead of letting it flail.
         const requested = output?.args?.tool;
         if (input.tool === 'invalid' && typeof requested === 'string' && requested.startsWith('external__')) {
             throw new Error(externalToolMessage(requested));
