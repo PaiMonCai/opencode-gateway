@@ -3,7 +3,7 @@
 ## 📋 Setup
 
 ```bash
-node --version    # Requires 20+
+node --version    # Requires 24+
 npm install
 
 # Install OpenCode CLI
@@ -33,6 +33,7 @@ npm run test:all      # all three test suites in one go
 npm run test:coverage # coverage
 npm run test:integration  # Docker-backed integration test
 npm run test:stream       # live-backend streaming smoke test (manual)
+npm run test:e2e          # real-runtime end-to-end smoke (tests/e2e/smoke.sh), not in CI
 npm run test:one -- tests/unit/conversation/registry.test.js --runInBand  # a single file
 ```
 
@@ -51,26 +52,28 @@ docker compose up -d --build
 docker compose logs -f
 ```
 
-Real-upstream smoke (not part of CI — it needs the network and a reachable upstream):
+Two smoke scripts stay outside CI because they need a real external dependency:
 
-```bash
-node tests/verification/smoke/real-upstream-smoke.mjs
-```
+- **Direct upstream** — needs the network and a reachable upstream:
 
-It drives the direct upstream path against the real OpenCode Zen endpoints with a
-deliberately invalid key, asserting that the upstream's native error surface
-reaches the client byte-for-byte instead of being rewritten by our error taxonomy.
+  ```bash
+  node tests/verification/smoke/real-upstream-smoke.mjs
+  ```
 
-Real-runtime smoke (not part of CI — it needs a real `opencode` binary and a
-reachable runtime):
+  It drives the direct upstream path against the real OpenCode Zen endpoints with
+  a deliberately invalid key, asserting that the upstream's native error surface
+  reaches the client byte-for-byte instead of being rewritten by our error
+  taxonomy.
 
-```bash
-bash tests/e2e/smoke.sh
-```
+- **Real runtime** — needs a real `opencode` binary and a reachable runtime:
 
-It starts the gateway on the SDK-driven runtime path, waits for `/health`, then
-exercises a non-streaming and a streaming chat completion plus a Responses call.
-`OPENCODE_PATH`, `E2E_MODEL`, `E2E_PORT` and `E2E_TIMEOUT_SECONDS` tune it.
+  ```bash
+  npm run test:e2e          # same as: bash tests/e2e/smoke.sh
+  ```
+
+  It starts the gateway on the SDK-driven runtime path, waits for `/health`, then
+  exercises a non-streaming and a streaming chat completion plus a Responses call.
+  `OPENCODE_PATH`, `E2E_MODEL`, `E2E_PORT` and `E2E_TIMEOUT_SECONDS` tune it.
 
 ## 📂 Project Layout
 

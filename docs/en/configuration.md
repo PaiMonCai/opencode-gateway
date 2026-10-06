@@ -359,3 +359,42 @@ OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 OPENCODE_DISABLE_TOOLS=false
 OPENCODE_PROXY_DEBUG=true
 ```
+
+## Known limits
+
+Deliberate or accepted behaviour, not silent defects. Each entry names the
+surface it belongs to; re-check that surface before changing or removing one.
+
+- **A streaming chat turn whose only upstream outcome is an error ends as a normal
+  empty `finish_reason:"stop"` chunk.** The status is already `200` and the SSE
+  headers are sent, so the failure cannot be signalled any more: the stream carries
+  no structured `error` record and closes with an empty
+  `finish_reason:"stop"` chunk plus `[DONE]`, indistinguishable from a successful
+  empty answer. The proxy does render a `[Proxy Error] <name>: <message>` content
+  delta for this case, but with the default `OPENCODE_DISABLE_TOOLS=true` the
+  streaming tool-markup filter holds text that starts with `[` or `{` and releases
+  it only to the tool-call parser, so it never reaches the client; a turn that had
+  already streamed text gets no marker either. The non-streaming path answers `502`
+  with the structured error envelope instead.
+- **A 404 `model_not_found` body carries an extra `available_models` array.** The
+  documented envelope is `message` / `type` / `code`; this response adds the
+  catalog ids alongside them, so a strict error schema must tolerate the extra
+  field.
+- **The final streaming usage chunk omits `object`, `model` and `created`.** Only
+  the delta chunks are full `chat.completion.chunk` objects; the terminal chunk
+  carries `id`, `choices` and `usage` (BEHAVIOUR-SPEC §2, streaming response).
+  Read the model name and timestamp from an earlier chunk.
+- **Free-tier learning is case-sensitive.** The hourly "this model is
+  runtime-only" memory is keyed on the exact `provider/model` string, so ids that
+  differ only in case are learned (and expire) separately and each can cost one
+  extra direct attempt within the hour. The `-free` suffix rule itself is
+  case-insensitive.
+- **The LRU cap can evict a conversation that is mid-turn.** The idle sweep never
+  touches a locked conversation, but the hard cap (1000 tracked conversations,
+  not configurable) wins: past it the least recently used entry is dropped and its
+  upstream session is closed, even while a turn of that conversation is running.
+  The next turn of that conversation starts from a fresh session.
+- **`MANAGE_BACKEND=false` with an unreachable backend stalls every turn for about
+  120 s.** Each request that needs the runtime waits out the startup probe
+  (60 attempts × 2 s) before failing with `500 internal_error`. The wait is a
+  compile-time constant: there is no setting for it.

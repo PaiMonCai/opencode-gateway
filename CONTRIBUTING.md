@@ -96,10 +96,12 @@ npm start
 
 ## Testing
 
-- Unit tests (`tests/unit/`): `npm run test:unit`
+- Unit tests (`tests/unit/`): `npm test`
+- HTTP contract tests (`tests/contract/`): `npm run test:contract`
+- Verification suite (`tests/verification/`): `npm run test:verify`
 - Integration tests (Docker, `tests/integration/`): `npm run test:integration`
 - Live streaming smoke test (manual, `tests/manual/`): `npm run test:stream`
-- All unit tests: `npm test`
+- Real-runtime end-to-end smoke (manual, `tests/e2e/`): `npm run test:e2e` (= `bash tests/e2e/smoke.sh`)
 
 ## Code Review Process
 

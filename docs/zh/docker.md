@@ -112,7 +112,7 @@ logging:
 
 ```bash
 npm run test:integration   # 构建镜像 + 起容器 + 跑 HTTP 集成检查，需要 Docker
-npm run test:stream        # 对真实网关跑流式冒烟，需要真机模型（可用 test:streaming-real）
+npm run test:stream        # 对真实网关跑流式冒烟，需要真机模型
 ```
 
 `test:integration` 的退出码：`0` 全通过、`1` 有检查失败、`2` 缺少 Docker/守护进程/curl（此时不会做任何测试，只打印原因）。常用环境变量：`TEST_PORT`、`TEST_API_KEY`、`IMAGE_TAG`、`KEEP_CONTAINER=1`（保留容器排查）、`SKIP_MODEL_TESTS=1`（离线跳过需要真实模型的检查）、`PROBE_VIA=exec`（用 `docker exec` 在容器内发请求；发布端口在宿主机不可达时——rootless/远程守护进程——用这个）。

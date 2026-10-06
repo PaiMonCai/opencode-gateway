@@ -251,7 +251,7 @@ change it.
 
 ## 3. Cross-cutting requirements
 
-- **Node**: ESM only, `engines.node >= 20`. Use global `fetch`; no axios.
+- **Node**: ESM only, `engines.node >= 24`. Use global `fetch`; no axios.
 - **Dependencies**: keep the runtime lean — `express`, `cors`, `@opencode-ai/sdk`.
   Prefer `express.json()`/`express.urlencoded()` over body-parser.
 - **Types**: JSDoc on every exported symbol, checked by `npm run typecheck`.

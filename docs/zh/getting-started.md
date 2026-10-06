@@ -11,7 +11,7 @@
 ## 📋 环境要求
 
 - **Docker 方式**：Docker 20.10+ 与 Docker Compose
-- **本地 Node 方式**：Node.js 20+
+- **本地 Node 方式**：Node.js 24+
 - **OpenCode CLI**：仅在需要**免费档模型**时必须（由中间件托管后端）；只用 Go 订阅 / 付费 Zen 时不需要，见下方说明
 
 ## 🎯 两种上游，按需选择

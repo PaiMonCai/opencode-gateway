@@ -331,3 +331,14 @@ OPENCODE_PROXY_CONCURRENCY_WAIT_MS=2000
 OPENCODE_DISABLE_TOOLS=false
 OPENCODE_PROXY_DEBUG=true
 ```
+
+## 已知限制
+
+以下行为是刻意保留或当前接受的，不是待修的缺陷。每条都标出了它所属的面；改动或删除前请先复核该面。
+
+- **流式 chat 一轮如果唯一的上游结果是错误，会以正常的空 `finish_reason:"stop"` 收尾。** 此时状态码已经是 `200`、SSE 响应头也已发出，失败无法再被上报：流里没有结构化的 `error` 记录，并以空的 `finish_reason:"stop"` chunk 加 `[DONE]` 结束，与一次成功的空回答无法区分。代理其实会为这种情况渲染一条 `[Proxy Error] <name>: <message>` 的 content delta，但在默认的 `OPENCODE_DISABLE_TOOLS=true` 下，流式工具标记过滤器会把以 `[` 或 `{` 开头的文本先扣住、只交给工具调用解析器，因此客户端根本收不到它；已经流出过文本的那一轮同样不会留下任何标记。非流式路径则返回 `502` 与结构化的错误体。
+- **404 `model_not_found` 的响应体多带一个 `available_models` 数组。** 文档化的错误体是 `message` / `type` / `code`；该响应会在它们之外附上目录里的模型 id，因此严格的错误 schema 必须容忍这个额外字段。
+- **流式最后的 usage chunk 不含 `object` / `model` / `created`。** 只有 delta chunk 是完整的 `chat.completion.chunk` 对象；收尾 chunk 只带 `id`、`choices` 与 `usage`（BEHAVIOUR-SPEC §2「流式响应」）。模型名与时间戳请从更早的 chunk 读取。
+- **免费档的学习机制大小写敏感。** 每小时有效的「该模型只能走 runtime」记忆以 `provider/model` 原字符串为键，因此仅大小写不同的 id 会各自记忆、各自过期，每小时内各自可能多花一次直连试探。`-free` 后缀规则本身则不区分大小写。
+- **LRU 上限可能驱逐正在处理中的会话。** 空闲清扫绝不碰持锁的会话，但硬上限（默认跟踪 1000 个会话，不可配置）优先：超过上限后最久未使用的条目会被删除并关闭其上游会话，即使该会话正有一轮在跑；该会话的下一轮会从新会话开始。
+- **`MANAGE_BACKEND=false` 且后端不可达时，每一轮都会停顿约 120 秒。** 每个需要 runtime 的请求都会等完启动探测（60 次 × 2 秒）才以 `500 internal_error` 失败。这个等待是编译期常量，没有任何配置项可以调整。

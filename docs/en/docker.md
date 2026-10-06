@@ -112,7 +112,7 @@ Set `OPENCODE_PROXY_DEBUG=true` for human-readable log lines instead of JSON.
 
 ```bash
 npm run test:integration   # build image, run a container, exercise HTTP; needs Docker
-npm run test:stream        # streaming smoke test against a live gateway (alias: test:streaming-real)
+npm run test:stream        # streaming smoke test against a live gateway
 ```
 
 `test:integration` exit codes: `0` all checks passed, `1` a check failed, `2` a prerequisite is missing (no Docker CLI, no daemon, no curl) — in that case nothing is tested and the reason is printed. Useful overrides: `TEST_PORT`, `TEST_API_KEY`, `IMAGE_TAG`, `KEEP_CONTAINER=1` (leave the container for inspection), `SKIP_MODEL_TESTS=1` (skip the checks that need a real model), `PROBE_VIA=exec` (send the probes with `docker exec` inside the container; use it when the published port is unreachable from the host, e.g. with rootless or remote daemons).
