@@ -16,6 +16,7 @@ const state = {
     sessionCounter: 0,
     currentSessionId: null,
     promptHangs: false,
+    releasePromptHang: null,
     messagesError: null,
     messages: [],
     reply: { content: 'Hello from the runtime', reasoning: '' },
@@ -26,6 +27,7 @@ const resetState = () => {
     state.sessionCounter = 0;
     state.currentSessionId = null;
     state.promptHangs = false;
+    state.releasePromptHang = null;
     state.messagesError = null;
     state.messages = [];
     state.reply = { content: 'Hello from the runtime', reasoning: '' };
@@ -67,7 +69,13 @@ const fakeSdk = {
             return { data: { id } };
         }),
         prompt: jest.fn(async () => {
-            if (state.promptHangs) return new Promise(() => {});
+            // A held turn parks here until the test releases it, so the response
+            // it belongs to can still finish and free the server it runs on.
+            if (state.promptHangs) {
+                await new Promise((resolve) => {
+                    state.releasePromptHang = resolve;
+                });
+            }
             state.messages = [
                 {
                     info: { id: `msg-${state.sessionCounter}`, role: 'assistant', finish: 'stop' },
@@ -474,18 +482,25 @@ describe('conversation failures: 503 conversation_busy / 503 session_state_unava
             model: 'opencode/kimi-k2.5',
             input: 'hold the conversation'
         }).set('x-opencode-session', 'busy-conversation');
-        first.end(() => {});
-        await new Promise((resolve) => setTimeout(resolve, 150));
+        const firstDone = new Promise((resolve) => first.end(() => resolve()));
+        try {
+            await new Promise((resolve) => setTimeout(resolve, 150));
 
-        const second = await responses(app, {
-            model: 'opencode/kimi-k2.5',
-            input: 'me too'
-        }).set('x-opencode-session', 'busy-conversation');
-        expect(second.statusCode).toBe(503);
-        expect(second.body).toEqual({
-            error: { message: 'Conversation is busy with another request', type: 'conversation_busy' }
-        });
-        state.promptHangs = false;
+            const second = await responses(app, {
+                model: 'opencode/kimi-k2.5',
+                input: 'me too'
+            }).set('x-opencode-session', 'busy-conversation');
+            expect(second.statusCode).toBe(503);
+            expect(second.body).toEqual({
+                error: { message: 'Conversation is busy with another request', type: 'conversation_busy' }
+            });
+        } finally {
+            // Release the holder and wait for its response: a turn left parked
+            // keeps supertest's per-test server open and stops Jest from exiting.
+            state.promptHangs = false;
+            state.releasePromptHang?.();
+            await firstDone;
+        }
     }, 15000);
 });
 
