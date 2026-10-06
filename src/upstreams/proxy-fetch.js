@@ -148,9 +148,11 @@ function toResponse(res) {
 /**
  * Build the error an aborted request fails with.
  *
- * Shaped exactly like the `AbortError` Node raises when `http.request` is handed
- * a `signal` (`name: 'AbortError'`, `code: 'ABORT_ERR'`, `cause: reason`), so
- * callers that branch on it keep working after we wire the signal ourselves.
+ * Carries the fields the `AbortError` Node raises when `http.request` is handed a
+ * `signal` carries — `name: 'AbortError'`, `code: 'ABORT_ERR'`, `cause: reason` —
+ * which is what callers branch on. It is a plain `Error` rather than Node's
+ * internal `AbortError` class, so a constructor-identity check would see the
+ * difference; nothing here does one.
  *
  * @param {AbortSignal} signal Signal that aborted.
  * @returns {Error} Abort error.
