@@ -11,15 +11,14 @@
         "format:check": "prettier --check .",
         "typecheck": "tsc --noEmit",
         "test": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit --runInBand --detectOpenHandles",
-        "test:unit": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit --runInBand --detectOpenHandles",
         "test:contract": "NODE_OPTIONS=--experimental-vm-modules jest tests/contract --runInBand --passWithNoTests",
         "test:verify": "NODE_OPTIONS=--experimental-vm-modules jest tests/verification --runInBand",
         "test:one": "NODE_OPTIONS=--experimental-vm-modules jest",
         "test:all": "npm run test && npm run test:contract && npm run test:verify",
         "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest tests/unit --coverage --runInBand --detectOpenHandles",
         "test:integration": "bash tests/integration/test-integration.sh",
-        "test:stream": "bash tests/manual/test-streaming-real.sh",
-        "test:streaming-real": "bash tests/manual/test-streaming-real.sh"
+        "test:e2e": "bash tests/e2e/smoke.sh",
+        "test:stream": "bash tests/manual/test-streaming-real.sh"
     },
     "keywords": [
         "opencode",
@@ -34,7 +33,7 @@
     "author": "",
     "license": "MIT",
     "engines": {
-        "node": ">=20.0.0"
+        "node": ">=24.0.0"
     },
     "dependencies": {
         "@opencode-ai/sdk": "^1.18.34",
