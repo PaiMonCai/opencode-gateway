@@ -11,12 +11,10 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { describeConfig } from './config/index.js';
+import { TOOL_LOCK_PLUGIN_PATH } from './tools/tool-lock-plugin.js';
 import { proxyEnvForRuntime, runtimeCanUseProxy } from './upstreams/proxy-fetch.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /** Executable name of the OpenCode CLI. */
 const OPENCODE_BASENAME = 'opencode';
@@ -48,10 +46,6 @@ const STARTUP_WAIT_ITERATIONS = 60;
 const STARTUP_WAIT_INTERVAL_MS = 2000;
 const STARTING_WAIT_ITERATIONS = 120;
 const STARTING_WAIT_INTERVAL_MS = 1000;
-
-/** Backend plugin that enforces the gateway tool policy. */
-const TOOL_LOCK_PLUGIN_FILE = 'opencode-gateway-tool-lock.js';
-const TOOL_LOCK_PLUGIN_PATH = path.join(__dirname, '..', 'plugin', TOOL_LOCK_PLUGIN_FILE);
 
 /** PATH entries, as a list. @returns {string[]} Directories. */
 function splitPathEnv() {

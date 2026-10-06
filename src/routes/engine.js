@@ -8,9 +8,6 @@
  * @module routes/engine
  */
 
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { createTurnLimiter } from '../concurrency/turn-limiter.js';
 import { createOperationalSurface } from './operations.js';
 import { createChatHandler } from './chat-handler.js';
@@ -34,8 +31,7 @@ import {
     stripFunctionCallMarkup,
     validateToolCalls
 } from '../tools/index.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { TOOL_LOCK_PLUGIN_FILE, TOOL_LOCK_PLUGIN_PATH } from '../tools/tool-lock-plugin.js';
 
 /**
  * Tool policy a turn runs under; the values mirror {@link TOOL_MODE} below.
@@ -252,9 +248,6 @@ const DEFAULT_EVENT_FIRST_DELTA_TIMEOUT_MS =
     Number(process.env.OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS) || 30000;
 const DEFAULT_EVENT_IDLE_TIMEOUT_MS = Number(process.env.OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS) || 8000;
 
-const TOOL_LOCK_PLUGIN_FILE = 'opencode-gateway-tool-lock.js';
-const TOOL_LOCK_PLUGIN_PATH = path.join(__dirname, '..', 'plugin', TOOL_LOCK_PLUGIN_FILE);
-
 /**
  * Create the turn engine.
  *
@@ -263,7 +256,6 @@ const TOOL_LOCK_PLUGIN_PATH = path.join(__dirname, '..', 'plugin', TOOL_LOCK_PLU
  * @param {any} options.logger Logger dependency.
  * @param {any} options.registry Conversation registry (`createConversationRegistry`).
  * @param {any} options.router Upstream router (`createUpstreamRouter`).
- * @param {any} [options.tools] Tool contract module, injectable for tests.
  * @param {any} [options.responseChains] `previous_response_id` chain index.
  * @param {any} [options.turnLimiter] Process-wide bounded turn limiter, injectable for tests.
  * @param {() => Promise<void>} [options.ensureBackend] Starts/awaits the managed backend.
@@ -274,7 +266,6 @@ export function createTurnEngine({
     logger = null,
     registry,
     router,
-    tools: _tools = null,
     responseChains = createResponseChainIndex(),
     turnLimiter = null,
     ensureBackend = async () => {}
