@@ -262,9 +262,12 @@ change it.
   HTTP contract, `tests/verification/` for the suites that re-check that contract
   from scratch, and `tests/e2e/` for the real-runtime smoke test.
 - **Coverage**: `npm run test:coverage`, thresholds only ratchet upwards.
-- **CI**: every push/PR runs lint + typecheck + `npm run test:all` (unit +
-  contract + verification); the image workflow stays tag-driven. CI must not
-  require an OpenCode runtime or network.
+- **CI**: every push and PR runs lint, `format:check`, typecheck and
+  `npm run test:all` (unit + contract + verification), none of which needs an
+  OpenCode runtime or the network. The image workflow re-runs that same gate on
+  every push to `main` and on `v*.*.*` tags, then builds the image, smoke-tests
+  the container against `/health` and publishes it to `ghcr.io`: a branch push
+  gets `latest`, the branch name and the run number, a tag gets its version.
 
 ## 4. Behaviour contract
 
