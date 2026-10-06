@@ -1,9 +1,8 @@
 /**
  * Runtime retry policy and session rotation.
  *
- * This module owns generic retry decisions and the lifecycle of replacing one
- * failed runtime session with a clean one. Turn-specific state (prompt history,
- * tool requesters, streaming buffers) stays in the route orchestrator.
+ * Owns generic retry decisions and replacing a failed runtime session; turn-specific
+ * state (prompt history, tool requesters, streaming buffers) stays in the orchestrator.
  *
  * @module routes/runtime-retry
  */
@@ -23,11 +22,9 @@ export const DEFAULT_RUNTIME_RETRY_MAX_ATTEMPTS = 3;
  */
 
 /**
- * Decide whether one failed runtime attempt is safe to retry.
- *
- * Retries are deliberately limited to transient upstream failures that produced
- * no usable client-visible output. Once any content/tool progress is emitted, a
- * retry could duplicate output and is therefore rejected.
+ * Decide whether one failed runtime attempt is safe to retry: only transient
+ * upstream failures that produced no client-visible output. Retrying after any
+ * content or tool progress could duplicate output.
  *
  * @param {object} options Retry state.
  * @param {RuntimeErrorLike|null|undefined} options.error Attempt error.

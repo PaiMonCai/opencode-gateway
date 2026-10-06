@@ -1,19 +1,10 @@
 import { PROXY_SCHEME_LIST, describeProxyUrl, parseProxyUrl } from './proxy-url.js';
 /**
  * The configuration schema: every environment variable / `config.json` key the
- * gateway understands, its default and how it is validated.
- *
- * `Config` keeps today's environment-variable names and values — they are the
- * public interface (`docs/zh/configuration.md`). Precedence is
- * **environment > config.json > default**, and an unset value (absent, `null` or
- * an empty string) falls through to the next source. A value that is present but
- * cannot be parsed fails fast with a readable {@link ConfigError}.
- *
- * Defaults are stored as **effective values**: where the pre-rewrite code used a
- * `0` / `undefined` / `''` sentinel meaning "fall back to the library default",
- * the schema carries the resolved value instead (30-minute session TTL, 8000 /
- * 30000 ms event timeouts, the documented session-header list, the upstream base
- * URLs). Consumers never have to re-apply a default.
+ * gateway understands, its default and how it is validated. Names and values are
+ * the public interface (`docs/zh/configuration.md`); precedence is
+ * **environment > config.json > default**, an unparseable value fails fast with a
+ * {@link ConfigError}, and defaults are stored as effective values.
  *
  * @module config/schema
  */
@@ -91,7 +82,7 @@ export class ConfigError extends Error {
  * @property {boolean} [emptyListMeansDefault] An empty list means "use the default list".
  * @property {(value: any, config: Record<string, any>) => string} [banner] Startup banner line formatter.
  * @property {{replacement?: string}} [deprecated] Setting still honoured, with what to use instead.
- * @property {string} [removed] Reason a setting no longer does anything.
+ * @property {string} [removed] Reason the setting does nothing.
  */
 
 /**
@@ -104,7 +95,7 @@ export function isUnset(value) {
     return value === undefined || value === null || (typeof value === 'string' && value.trim() === '');
 }
 
-/** Accepted truthy/falsy boolean spellings, matching the pre-rewrite parser. */
+/** Accepted truthy/falsy boolean spellings. */
 const TRUE_VALUES = Object.freeze(['1', 'true', 'yes', 'y', 'on']);
 const FALSE_VALUES = Object.freeze(['0', 'false', 'no', 'n', 'off']);
 
@@ -415,9 +406,9 @@ const FIELDS = [
             'Operational endpoints: off, health (`/health/details`, auth required) or full (adds `/metrics`)',
         banner: (value) => `  - Ops endpoints: ${value}`
     },
-    // The four switches below are derived from OPS. Their environment names still
-    // work (an explicit value wins) but they are no longer part of the documented
-    // surface: OPENCODE_PROXY_OPS is the knob to use.
+    // The four switches below are derived from OPS: their environment names and
+    // configuration keys are removed and no longer take effect — setting one only
+    // logs a warning that names OPENCODE_PROXY_OPS, which is the only knob.
     {
         key: 'HEALTH_DETAILS_ENABLED',
         env: [],
@@ -739,8 +730,8 @@ const FIELDS = [
 export const CONFIG_FIELDS = Object.freeze(FIELDS);
 
 /**
- * Environment names that no longer do anything at all, with the reason they
- * disappeared. Setting one is reported at startup and otherwise ignored.
+ * Environment names that do nothing, with the reason. Setting one is reported at
+ * startup and otherwise ignored.
  *
  * @type {Readonly<Record<string, string>>}
  */
@@ -772,7 +763,7 @@ export const REMOVED_ENV_NAMES = Object.freeze({
  */
 
 /**
- * Report the settings an operator still uses that are no longer documented.
+ * Report the settings an operator still sets that the gateway ignores.
  *
  * @param {Record<string, string | undefined>} env Environment bag.
  * @param {Record<string, unknown>} fileValues Parsed `config.json` values.
@@ -801,7 +792,7 @@ export function collectRemovedSettings(env, fileValues = {}) {
     return found;
 }
 
-/** `config.json` keys of settings that no longer do anything. */
+/** `config.json` keys of settings that do nothing. */
 const REMOVED_FILE_KEY_NOTES = Object.freeze(
     Object.fromEntries(FIELDS.filter((field) => field.removed).map((field) => [field.key, field.removed]))
 );
@@ -855,8 +846,6 @@ const REMOVED_FILE_KEY_NOTES = Object.freeze(
  * @property {string} UPSTREAM_PROXY
  * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
  * @property {Array<{name: string, source: string, message: string}>} REMOVED_SETTINGS
- * @property {string} UPSTREAM_PROXY
- * @property {boolean} UPSTREAM_PROXY_FOR_RUNTIME
  * @property {boolean} DEBUG
  */
 

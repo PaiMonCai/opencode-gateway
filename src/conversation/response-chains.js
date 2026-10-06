@@ -1,10 +1,7 @@
 /**
- * Stateful `previous_response_id` chain index.
- *
- * A response id maps to the runtime session that produced it for a bounded
- * lifetime, so Responses API clients can continue without resending history.
- * The index also tells the conversation store when a live response chain still
- * owns a session, preventing cleanup from deleting it too early.
+ * Stateful `previous_response_id` chain index: response id → runtime session, so
+ * Responses API clients can continue without resending history, and the
+ * conversation store does not delete a session a live chain still owns.
  *
  * @module conversation/response-chains
  */

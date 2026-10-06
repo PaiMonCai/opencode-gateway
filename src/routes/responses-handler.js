@@ -119,8 +119,8 @@ export function createResponsesHandler(deps) {
         let releaseConversationLock = null;
         /** @type {(() => void)|null} */
         let releaseTurnCapacity = null;
-        // Aborted when the client disconnects, so a streaming turn does not hold
-        // its conversation lock until the idle or request timeout fires.
+        // Aborted on client disconnect so a streaming turn does not hold its lock
+        // until the idle or request timeout fires.
         const turnAbort = new AbortController();
         res.on('close', () => {
             if (!res.writableEnded) turnAbort.abort();
@@ -294,11 +294,9 @@ export function createResponsesHandler(deps) {
                 // Best effort: a failed model switch must not fail the turn.
             }
 
-            // Continue the stored session when chaining from previous_response_id;
-            // otherwise reuse the session bound to the client's conversation header,
-            // or start a fresh one. With the tool-lock plugin, a chained session
-            // keeps the policy it was created with, so toolControl.title only
-            // matters for new sessions.
+            // Continue the stored session when chaining from previous_response_id, else
+            // reuse the header-bound session or start fresh. A chained session keeps the
+            // tool policy it was created with, so toolControl.title only matters for new ones.
             const toolControl = await resolveToolControl(toolMode, internalToolContext);
             const deliverableMessages = conversationDeliverableMessages(messages);
             const conversationScope = conversationScopeForTurn(
@@ -343,9 +341,8 @@ export function createResponsesHandler(deps) {
             if (turnPlan?.reuse || previousState?.sessionId) {
                 turnBaseline = resolvedTurn.baseline;
                 if (!turnBaseline || !turnBaseline.ok) {
-                    // Answer here, exactly like the chat surface: throwing would send
-                    // this through the upstream error mapper, which rewrites any 5xx
-                    // into 502 server_error and loses the documented code.
+                    // Answer here instead of throwing: the upstream error mapper rewrites
+                    // any 5xx into 502 server_error and loses the documented code.
                     return res.status(503).json(sessionStateUnavailableBody());
                 }
             }
@@ -618,10 +615,9 @@ export function createResponsesHandler(deps) {
                 responsesStreamWriter.complete(response);
                 responsesStreamWriter.done();
                 storeResponseState(responseId, sessionId, `${pID}/${mID}`);
-                // Only turns that went through conversation planning may be registered:
-                // a `previous_response_id` turn owns a session this map knows nothing
-                // about, and recording it with no delivered-turn count would let the
-                // next header-only request evict a session the response chain still uses.
+                // Only planned turns may be registered: recording a `previous_response_id`
+                // session with no delivered-turn count would let the next header-only request
+                // evict a session the response chain still uses.
                 if (turnPlan) {
                     storeConversationEntry(conversationKey, {
                         sessionId,
@@ -673,10 +669,7 @@ export function createResponsesHandler(deps) {
             }
 
             if (!content && !reasoning && responseRes.data && promptBasedToolCalls.length === 0) {
-                // A tool-only or empty turn has nothing to say: leaving the output
-                // empty is the documented behaviour. Serializing the internal
-                // payload here used to leak the runtime's part structure to the
-                // client as if it were an answer.
+                // Nothing streamed or polled: the runtime's flat `message` is the fallback.
                 const data = responseRes.data;
                 content = typeof data === 'string' ? data : data?.message || '';
             }

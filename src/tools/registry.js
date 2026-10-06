@@ -79,10 +79,9 @@ function normalizeParameters(parameters) {
 /**
  * Normalize a function-tool declaration from either API shape.
  *
- * Callers used to read `tool.function.name` directly, so every Responses-API tool was
- * silently dropped from the registry. An empty registry means no tool contract reaches
- * the prompt and no tool-call markup is ever parsed back out, which is indistinguishable
- * from a model that simply refuses to call tools.
+ * Reading `tool.function.name` alone would drop every Responses-API tool; an empty
+ * registry then means no tool contract reaches the prompt and no tool-call markup is
+ * parsed back out, which is indistinguishable from a model that refuses to call tools.
  *
  * @param {unknown} tool Raw declaration.
  * @returns {NormalizedToolDefinition|null} Normalized definition, or null when unusable.
@@ -220,10 +219,10 @@ export function buildExternalToolRegistry(tools, options = {}) {
 /**
  * Resolve a model-emitted name to a registry entry.
  *
- * Exact namespaced/original matches win. Models frequently drop separators or change
- * case when emitting a name (the request declares `web_fetch`, the model writes
- * `webfetch`), so a separator/case-insensitive match is accepted as a fallback — but
- * only when it is unambiguous: an exact match always wins and a tie resolves to nothing.
+ * Exact namespaced/original matches win. Models frequently drop separators or change case
+ * when emitting a name (the request declares `web_fetch`, the model writes `webfetch`),
+ * so a separator/case-insensitive match is accepted as a fallback — but only when it is
+ * unambiguous: an exact match always wins and a tie resolves to nothing.
  *
  * @param {ExternalTool[]|unknown} registry Registry to search.
  * @param {unknown} name Name as emitted.

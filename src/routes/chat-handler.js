@@ -391,10 +391,6 @@ export function createChatHandler(deps) {
                  * @param {Array<Record<string, unknown>>} builtParts Prompt parts.
                  * @returns {Array<Record<string, unknown>>} Parts with the contract reminder.
                  */
-                /**
-                 * @param {Array<Record<string, unknown>>} builtParts Prompt parts.
-                 * @returns {Array<Record<string, unknown>>} Parts with the contract reminder.
-                 */
                 const withToolReminder = (builtParts) =>
                     externalToolContext.reminder
                         ? [...builtParts, { type: 'text', text: externalToolContext.reminder }]
@@ -500,11 +496,6 @@ export function createChatHandler(deps) {
                     };
                     ensureKeepalive();
 
-                    /**
-                     * @param {string} delta Text delta.
-                     * @param {boolean} [isReasoning] Whether this is reasoning text.
-                     * @returns {void}
-                     */
                     /**
                      * @param {string} delta Streamed text.
                      * @param {boolean} [isReasoning] Whether this is reasoning text.

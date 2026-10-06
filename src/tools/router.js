@@ -1,10 +1,7 @@
 /**
- * Request-level tool exposure and replay.
- *
- * `registry.js` describes the tools a request declared; this module decides what the
- * model is told about them (`tool_choice` semantics, the contract prompt and its final
- * reminder), and how a previous turn's tool calls and results are replayed into the
- * transcript in the text-contract form.
+ * Request-level tool exposure and replay: what the model is told about the declared tools
+ * (`tool_choice` semantics, the contract prompt and its final reminder), and how a previous
+ * turn's tool calls and results are replayed into the transcript in text-contract form.
  *
  * @module tools/router
  */
@@ -104,13 +101,12 @@ export function buildExternalToolsPrompt(registry, toolChoice = null) {
 }
 
 /**
- * Short imperative restatement of the markup contract, meant to be appended as the final
- * prompt part rather than buried in the system prompt.
+ * Short imperative restatement of the markup contract, appended as the final prompt part
+ * rather than buried in the system prompt.
  *
- * Position matters more than wording here. With the contract only in the system prompt,
- * deepseek-v4-flash-free emitted parseable markup in 4/8 runs of an obvious single-tool
- * request; with this reminder as the last thing before generation it was 8/8. Harnesses
- * like pi send system prompts of 16KB or more and the contract gets lost inside them.
+ * Position matters more than wording: with the contract only in the system prompt the
+ * markup is frequently missed, and harnesses like pi send system prompts of 16KB or more,
+ * where it gets lost entirely.
  *
  * @param {import('./registry.js').ExternalTool[]|unknown} registry Exposed registry.
  * @param {unknown} [toolChoice] Raw `tool_choice`.

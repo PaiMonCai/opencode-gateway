@@ -1,14 +1,9 @@
 /**
- * Turn planner.
+ * Turn planner: decides whether the session of a stored entry can be reused for
+ * this turn, and which slice of the client transcript still has to be sent.
  *
- * The OpenAI surface is stateless: every request carries the whole transcript,
- * while a backend session already holds the turns the proxy sent earlier. This
- * module decides, for one turn, whether that session may be reused and which
- * slice of the transcript still has to be sent.
- *
- * Pure logic only: no HTTP, no SDK, no clock. The only inputs are the stored
- * entry and the delivered messages, so the same call always yields the same
- * plan.
+ * Pure logic — no HTTP, no SDK, no clock — so the same inputs always yield the
+ * same plan.
  */
 
 import crypto from 'node:crypto';
@@ -25,8 +20,8 @@ import crypto from 'node:crypto';
  * - `rewrite` — an entry existed but could not be reused (rewritten history);
  * - `pinned` — the turn continues a `previous_response_id` chain: the session
  *   is fixed by the caller and MUST NOT be re-registered via `storeTurn`;
- * - `rotation` — produced by `planRotationTurn` after a retry/failure rotated
- *   the session, so `delta` is deliberately the full history;
+ * - `rotation` — produced by `planRotationTurn` after a retry rotated the
+ *   session, so `delta` is deliberately the full history;
  * - `delta` — the non-system messages to send to the backend;
  * - `deltaStartIndex` — index of `delta[0]` inside the delivered transcript;
  * - `sentCount` — how many delivered messages the session holds afterwards;
@@ -55,9 +50,9 @@ import crypto from 'node:crypto';
 export const PREFIX_DIGEST_SEED = 'opencode-gateway-conversation';
 
 /**
- * Deep, key-order independent copy of a JSON-ish value. Two messages that carry
- * the same data always serialize to the same string, whatever order their keys
- * arrive in, which is what keeps a digest from churning the session.
+ * Deep, key-order independent copy of a JSON-ish value: two messages carrying
+ * the same data always serialize to the same string, which keeps a digest from
+ * churning the session.
  *
  * @param {unknown} value
  * @returns {unknown}
@@ -76,9 +71,8 @@ export function canonicalize(value) {
 }
 
 /**
- * Stable fingerprint of one client message. The proxy ignores plenty of fields
- * and clients do not promise a key order, so only the fields that change what
- * the backend sees take part, and they are canonicalized.
+ * Stable fingerprint of one client message: only the fields that change what the
+ * backend sees, canonicalized because clients do not promise a key order.
  *
  * @param {unknown} message
  * @returns {string}
@@ -116,9 +110,9 @@ export function hashMessage(message) {
 }
 
 /**
- * Rolling digest over the first `count` delivered messages. Comparing it with
- * the stored digest detects an edit, reorder, or truncation anywhere in the
- * prefix — a tail-only hash would let an edited earlier turn through.
+ * Rolling digest over the first `count` delivered messages: detects an edit,
+ * reorder, or truncation anywhere in the prefix (a tail-only hash would let an
+ * edited earlier turn through).
  *
  * @param {Array<unknown>} messages
  * @param {number} count
@@ -152,8 +146,8 @@ export function deliverableMessages(messages) {
 
 /**
  * True when at least one delivered message carries content the runtime can act
- * on. This is evaluated against the delivered slice, so a reused session does
- * not count earlier turns that are already present upstream.
+ * on. Evaluated against the delivered slice, so a reused session does not count
+ * earlier turns that are already present upstream.
  *
  * @param {Array<Record<string, any>>|unknown} messages Full client history.
  * @param {number} [includeFromIndex] First non-system message index to inspect.
@@ -188,8 +182,8 @@ export function hasDeliverablePromptContent(messages, includeFromIndex = 0) {
 }
 
 /**
- * Fingerprint of the tool contract a request carries (names + choice mode).
- * The tool policy rides in the session title and is fixed when the session is
+ * Fingerprint of the tool contract a request carries (names + choice mode). The
+ * tool policy rides in the session title and is fixed when the session is
  * created, so two turns with different tool sets must not share a session.
  *
  * @param {unknown} tools
@@ -216,9 +210,8 @@ export function toolsFingerprintFor(tools, toolChoice) {
 }
 
 /**
- * Digest of the answer a session produced for its last turn. It is what tells
- * two look-alike derived conversations apart when the client echoes the answer
- * back.
+ * Digest of the answer a session produced for its last turn: tells two
+ * look-alike derived conversations apart when the client echoes the answer back.
  *
  * @param {unknown} replyText
  * @returns {string|null} null when the answer carried no text
@@ -240,11 +233,10 @@ function previewOf(content, length = 40) {
 }
 
 /**
- * Report an echoed assistant message that does not match the answer the session
- * actually produced. The echo is still skipped — that is the documented
- * behaviour, and normal clients replay our own text — but a mismatch means a
- * client injected an assistant message the model never produced, which silently
- * disappears from the upstream context. Debug-level observation only.
+ * Log an echoed assistant message that does not match the answer the session
+ * produced: the echo is still skipped, but a mismatch means the client injected
+ * an assistant message the model never produced, which silently disappears from
+ * the upstream context. Debug-level observation only.
  *
  * @param {ConversationEntry} entry
  * @param {Record<string, any>|undefined} message skipped assistant message
@@ -269,10 +261,10 @@ function reportEchoMismatch(entry, message, index, options) {
 /**
  * Plan the turn against an existing entry.
  *
- * Reuse is only safe when the client's non-system history extends exactly what
- * was already delivered: `delta` is then only the appended turns. Any other
- * shape means the client rewrote the conversation, so the plan is the one a
- * fresh session needs — the full history.
+ * Reuse requires the client's non-system history to extend exactly what was
+ * already delivered: `delta` is then only the appended turns. Any other shape
+ * means the client rewrote the conversation, so the plan is the full history a
+ * fresh session needs.
  *
  * @param {ConversationEntry|null|undefined} entry
  * @param {Array<object>} deliverable non-system messages, in order
@@ -293,18 +285,17 @@ export function planConversationTurn(entry, deliverable, options = {}) {
         sentDigest: prefixDigest(messages, messages.length)
     };
     if (!entry || !entry.sentCount) return fresh;
-    // Nothing new to append (equal length) means the client replayed the same
-    // history, and prompting an empty turn would fail: start clean instead.
+    // Equal length means the client replayed the same history, and prompting an
+    // empty turn would fail: start clean instead.
     if (messages.length <= entry.sentCount) return fresh;
     // Any edit, reorder, or truncation inside the delivered prefix invalidates
     // the session, not just a change to its last message.
     if (prefixDigest(messages, entry.sentCount) !== entry.sentDigest) return fresh;
 
     const rawDelta = /** @type {Array<Record<string, any>>} */ (messages.slice(entry.sentCount));
-    // Clients echo the previous assistant turn back in the history, and the
-    // backend session already produced it. Sending it again would duplicate
-    // the answer inside the context, so skip the echoed turns. A delta that is
-    // nothing but echoes carries no new instruction: rotate and send the whole
+    // Clients echo the previous assistant turn back, and the session already
+    // produced it: sending it again would duplicate the answer. A delta of
+    // nothing but echoes carries no new instruction, so rotate with the full
     // history instead of re-appending the echo.
     let echoed = 0;
     while (echoed < rawDelta.length && String(rawDelta[echoed]?.role || '').toLowerCase() === 'assistant') {

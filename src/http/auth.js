@@ -1,11 +1,8 @@
 /**
- * Bearer authentication helpers and the global auth middleware.
- *
- * The documented behaviour (`docs/zh/api-reference.md`): when `API_KEY` is set,
- * `/v1/*` requires `Authorization: Bearer <API_KEY>`; when it is empty the proxy
- * is open. Operational endpoints (`/health/details`, `/metrics`) decide their own
- * policy per flags, so the route layer owns them — see
- * {@link shouldAllowOperationalEndpoint}.
+ * Bearer authentication helpers and the global auth middleware: with `API_KEY`
+ * set (`docs/zh/api-reference.md`), `/v1/*` requires
+ * `Authorization: Bearer <API_KEY>`; an empty key disables auth. Operational
+ * endpoints own their policy — see {@link shouldAllowOperationalEndpoint}.
  *
  * @module http/auth
  */

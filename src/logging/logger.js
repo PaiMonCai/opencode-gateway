@@ -34,9 +34,9 @@ const SECRET_KEY_PATTERN =
     /(api[-_]?key|apikey|password|passwd|secret|token|authorization|credential|cookie|private[-_]?key)/i;
 
 /**
- * Field names that merely *mention* a token: usage counters and limits. They are
- * numbers, they are useful in a debug line, and the secret pattern above matched
- * `max_tokens` because it contains `token`.
+ * Field names that merely *mention* a token: usage counters are numbers, useful
+ * in a debug line, and the secret pattern above would otherwise redact
+ * `max_tokens`.
  *
  * @type {RegExp}
  */
@@ -64,10 +64,9 @@ const INLINE_SECRET_PATTERNS = Object.freeze([
 /**
  * Coerce the extra-fields argument into a plain object.
  *
- * Call sites occasionally pass a string or an `Error` where an object is
- * expected. Spreading those silently produced character-indexed keys
- * (`{0:'R',1:'e',…}`) or an empty record, which is exactly the kind of log line
- * an operator cannot use, so the shape is normalised here.
+ * A call site that passes a string or an `Error` where an object is expected would
+ * otherwise spread into character-indexed keys (`{0:'R',1:'e',…}`) or an empty
+ * record, which an operator cannot use.
  *
  * @param {unknown} fields Extra fields from a call site.
  * @returns {LogFields} Plain object that is safe to spread.
@@ -199,18 +198,17 @@ export class Logger {
      */
     constructor(options = {}) {
         /**
-         * Level as configured. `debug: true` (from `OPENCODE_PROXY_DEBUG`) raises
-         * the threshold to `debug` as well: before this, the flag only switched
-         * the format and every `log.debug()` record was dropped, which made the
-         * debug diagnostics unreadable in production.
+         * Level as configured. `debug: true` (from `OPENCODE_PROXY_DEBUG`) also
+         * raises the threshold to `debug`, so debug records are emitted rather
+         * than only reformatted.
          *
          * @type {string | number}
          */
         this.level = options.level ?? (options.debug ? 'debug' : 'info');
         /**
          * Whether records are emitted as JSON lines. The explicit `json` option
-         * wins, then the `debug` option, then the environment flag: asking for
-         * debug output in the constructor should not silently stay in JSON.
+         * wins, then `debug`, then the environment flag, so asking for debug output
+         * in the constructor never silently stays JSON.
          *
          * @type {boolean}
          */

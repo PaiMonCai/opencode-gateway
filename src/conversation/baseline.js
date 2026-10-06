@@ -1,17 +1,10 @@
 /**
- * Session baseline.
- *
- * A reused backend session already holds the earlier turns. Polling and event
- * collection must ignore the message/part ids that existed before the turn
- * started, or the previous answer gets reported as this turn's. The baseline is
- * exactly that set of pre-existing ids.
- *
- * Reading it is best-effort by nature, but *not* optional: a turn that cannot
- * read its baseline fails closed (`503 session_state_unavailable`) instead of
- * falling back to unfiltered polling.
+ * Session baseline: the message/part ids a reused backend session already held
+ * before the turn started. A turn that cannot read it fails closed with
+ * `503 session_state_unavailable` instead of polling unfiltered.
  */
 
-/** Error code the HTTP layer maps to a `503` for a failed baseline read. */
+/** Error code the HTTP layer maps to a `503`. */
 export const SESSION_STATE_UNAVAILABLE = 'session_state_unavailable';
 
 /**
@@ -51,10 +44,8 @@ const emptyBaseline = () => ({ ok: true, messageIds: new Set(), partIds: new Set
 /**
  * Collect the ids a session already holds.
  *
- * One retry: a transient read failure must not silently downgrade this to "no
- * baseline", which would let the previous turn be reported as the current
- * answer. When both attempts fail the result is `ok: false` with empty sets —
- * callers must fail the turn, never poll unfiltered.
+ * Retries once, then reports `ok: false` with empty sets — callers must fail the
+ * turn rather than poll unfiltered.
  *
  * @param {object} params
  * @param {string|null|undefined} params.sessionId
@@ -73,17 +64,13 @@ export async function snapshotSessionState({
     const result = emptyBaseline();
     if (!sessionId) return result;
     const attempts = Math.max(1, Math.floor(Number(maxAttempts) || 2));
-    // One retry: a transient read failure must not silently downgrade this to
-    // "no baseline", which would let the previous turn be reported as the
-    // current answer (the whole point of the snapshot).
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
         try {
             if (!sessionBackend || typeof sessionBackend.messages !== 'function') {
                 throw new Error('no session backend available');
             }
             const response = await sessionBackend.messages(sessionId);
-            // The runtime client wraps reads in `{ data }`; tests hand back the
-            // list directly.
+            // Runtime client wraps reads in `{ data }`; tests return the list directly.
             const raw = /** @type {any} */ (response);
             const messages = raw?.data || raw || [];
             if (!Array.isArray(messages)) throw new Error('unexpected message list shape');

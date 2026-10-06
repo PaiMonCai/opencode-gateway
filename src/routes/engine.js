@@ -1,16 +1,9 @@
 /**
  * OpenAI-surface turn engine.
  *
- * The engine owns everything a turn needs after the HTTP edge has parsed the
- * request: model resolution, the text-contract tool bridge, prompt assembly, the
- * runtime/direct upstream turn, retries, usage estimates, the `previous_response_id`
- * continuation flow and the streaming writers for both API shapes.
- *
- * `src/routes/{chat,responses,health,models}.js` are the route surfaces: they
- * parse, call an engine method and write the response. `src/app.js` installs the
- * HTTP edge and mounts them; `src/server.js` owns the process and the managed
- * backend. The conversation lifecycle is `src/conversation`, the upstreams are
- * `src/upstreams`, the tool contract is `src/tools`.
+ * Owns everything a turn needs after the HTTP edge parsed the request: model
+ * resolution, tool policy, prompt assembly, the runtime/direct upstream turn,
+ * retries, `previous_response_id` continuation and the streaming writers.
  *
  * @module routes/engine
  */
@@ -45,15 +38,14 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Tool policy a turn runs under. The values mirror
- * {@link TOOL_MODE} below and travel through every resolver.
+ * Tool policy a turn runs under; the values mirror {@link TOOL_MODE} below.
  *
  * @typedef {'disabled'|'external-bridge'|'internal-allowlist'} ToolMode
  */
 
 /**
  * An error as the engine sees it: a normal `Error` carrying the optional
- * provider-shaped fields the monolith read straight off the thrown value.
+ * provider-shaped fields an upstream throw may set.
  *
  * @typedef {Error & {statusCode?: number, code?: string, type?: string, availableModels?: string[]}} UpstreamErrorLike
  */
@@ -254,22 +246,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  */
 
 const DEFAULT_POLL_INTERVAL_MS = 500;
-// Reasoning models can take well over 10s before emitting their first token.
-// A short window here makes the event stream give up and fall back to polling on
-// every request, which loses true streaming. Configurable for slow backends.
+// Reasoning models can idle well over 10s before the first token; a shorter window
+// would make every request fall back to polling and lose true streaming.
 const DEFAULT_EVENT_FIRST_DELTA_TIMEOUT_MS =
     Number(process.env.OPENCODE_GATEWAY_EVENT_FIRST_DELTA_TIMEOUT_MS) || 30000;
 const DEFAULT_EVENT_IDLE_TIMEOUT_MS = Number(process.env.OPENCODE_GATEWAY_EVENT_IDLE_TIMEOUT_MS) || 8000;
 
-// cannot make the proxy accumulate (and pay for) unbounded backend sessions.
-// message) are kept apart by their transcript prefix, so a bounded candidate
-// list per anchor is enough to tell one conversation from its look-alikes.
-
 const TOOL_LOCK_PLUGIN_FILE = 'opencode-gateway-tool-lock.js';
 const TOOL_LOCK_PLUGIN_PATH = path.join(__dirname, '..', 'plugin', TOOL_LOCK_PLUGIN_FILE);
-
-/**
- * Robust Health Check Helper
 
 /**
  * Create the turn engine.
@@ -314,8 +298,6 @@ export function createTurnEngine({
         else if (debugEnabled) console.warn('[Proxy]', ...args);
     };
     /**
-     * Only used where the monolith used console.error.
-     *
      * @param {unknown} message Message to log.
      * @param {unknown} [details] Structured detail to log.
      */
@@ -355,10 +337,8 @@ export function createTurnEngine({
     });
 
     /**
-     * Acquire one process-wide turn slot after the conversation lock is held.
-     *
-     * Taking locks in that order keeps duplicate requests for one conversation
-     * from occupying multiple global permits while they wait on each other.
+     * Acquire one process-wide turn slot after the conversation lock is held, so
+     * duplicate requests for one conversation cannot hold global permits while waiting.
      *
      * @param {import('express').Response} res Response to write on overload.
      * @param {AbortSignal} signal Client-disconnect signal.
@@ -517,9 +497,8 @@ export function createTurnEngine({
             exposure,
             toolChoice: exposure.toolChoice,
             prompt: exposure.prompt,
-            // The contract reminder is appended as the last part of every turn:
-            // it sits right before generation, where it is actually followed
-            // (router.js documents the parse-rate effect of that position).
+            // Appended as the last prompt part: it sits right before generation, where
+            // models actually follow it.
             reminder: exposure.reminder
         };
     };
@@ -698,8 +677,7 @@ export function createTurnEngine({
             if (toolOverrides && Object.keys(toolOverrides).length > 0) {
                 forcedPromptParams.body.tools = toolOverrides;
             }
-            // The retry lands in the same session, so the turns already there must be
-            // excluded when polling for its answer.
+            // The retry lands in the same session: exclude the turns already there when polling.
             const baseline = baselineProvider ? await baselineProvider() : null;
             await promptWithTimeout(forcedPromptParams, requestTimeoutMs, signal);
             return pollForAssistantResponse(sessionId, requestTimeoutMs, DEFAULT_POLL_INTERVAL_MS, baseline);
@@ -809,14 +787,10 @@ export function createTurnEngine({
         return overrides;
     };
 
-    // Tool enforcement. OpenCode Zen's free tier rejects any request whose tool
-    // list differs from the official client's ("free tier can only be used from
-    // within OpenCode"), and a per-request `tools` map strips tools from that
-    // list. When the backend runs the opencode-gateway tool-lock plugin, the tool
-    // list is left intact and the policy travels in the session title instead;
-    // the plugin then refuses every tool the policy does not allow. Backends
-    // without the plugin fall back to the `tools` map, which keeps tools off but
-    // only works with models that skip the free-tier check.
+    // OpenCode Zen's free tier rejects any request whose tool list differs from the
+    // official client's, and a per-request `tools` map strips tools from that list.
+    // With the tool-lock plugin the list stays intact and the policy travels in the
+    // session title instead; backends without the plugin fall back to the `tools` map.
     const TOOL_LOCK_CHECK_MS = 60 * 1000;
     let toolLockState = { loaded: false, checkedAt: 0, warned: false };
 
@@ -871,8 +845,6 @@ export function createTurnEngine({
      */
     const sessionTitleForPolicy = (policy) => `opencode-gateway [tools:${policy}]`;
 
-    // Resolves how a request's tool policy reaches the backend: a session title
-    // for the tool-lock plugin, or a `tools` override map as the fallback.
     /**
      * @param {ToolMode} toolMode Policy the turn runs under.
      * @param {{allowedToolNames?: string[]}} [internalContext] Resolved internal allowlist.

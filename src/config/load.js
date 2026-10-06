@@ -131,12 +131,9 @@ function resolveField(field, env, fileValues, partial) {
  * `null` or blank) falls through. Any present-but-unparseable value throws a
  * {@link ConfigError} naming the offending variable/key.
  *
- * The defaults here are the **effective values**, not the `0`/`undefined`/`''`
- * sentinels the pre-rewrite `index.js` used: `SESSION_TTL_MS` is already 30
- * minutes, `EVENT_IDLE_TIMEOUT_MS` / `EVENT_FIRST_DELTA_TIMEOUT_MS` are already
- * 8000 / 30000, `SESSION_HEADER_NAMES` already holds the documented header list
- * and `DIRECT_*_BASE_URL` already points at the upstream endpoints. Consumers can
- * use these values directly.
+ * Defaults here are the **effective values** — a 30-minute session TTL, 8000 /
+ * 30000 ms event timeouts, the documented session-header list, the upstream base
+ * URLs — so consumers can use them directly.
  *
  * @param {LoadConfigOptions} [options] Load options.
  * @returns {import('./schema.js').Config} Frozen configuration.

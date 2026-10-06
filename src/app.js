@@ -1,10 +1,7 @@
 /**
- * Application assembly.
- *
- * `createApp` builds the Express application from injected dependencies: the
- * HTTP edge (CORS, JSON parsing, auth, request context), the route table, and
- * the terminal 404/error handlers — in that order. It performs no business
- * logic itself.
+ * Application assembly: `createApp` wires the HTTP edge (CORS, body parsing, auth,
+ * request context), the route table and the terminal 404/error handlers, in that
+ * order. No business logic lives here.
  *
  * @module app
  */

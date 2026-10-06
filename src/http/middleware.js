@@ -11,7 +11,7 @@ import express from 'express';
 import { DEFAULT_SESSION_HEADER_NAMES } from '../config/index.js';
 import { InvalidRequestError, asGatewayError, toOpenAIError } from '../errors/index.js';
 
-/** Body limit shared by the JSON and urlencoded parsers (pre-rewrite parity). */
+/** Body limit shared by the JSON and urlencoded parsers. */
 export const DEFAULT_JSON_BODY_LIMIT = '50mb';
 
 /**
@@ -48,7 +48,7 @@ export function createCorsMiddleware(options = {}) {
  * Build the JSON and urlencoded body parsers, in application order.
  *
  * `express.json()`/`express.urlencoded()` are used instead of `body-parser`
- * (architecture §3).
+ * (`docs/ARCHITECTURE.md` §3).
  *
  * @param {BodyParserOptions} [options] Parser options.
  * @returns {[import('express').RequestHandler, import('express').RequestHandler]} `[json, urlencoded]`.
@@ -118,7 +118,7 @@ export function createErrorHandler(options = {}) {
  * Unknown routes are outside `docs/zh/api-reference.md`, so
  * `docs/BEHAVIOUR-SPEC.md` §1 governs the shape: an informative
  * `Route not found: <METHOD> <path>` message with `type: not_found_error` and no
- * `code`, matching the pre-rewrite body an operator can act on.
+ * `code`.
  *
  * @returns {import('express').RequestHandler} Express middleware.
  */

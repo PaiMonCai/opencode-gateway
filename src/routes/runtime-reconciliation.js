@@ -1,11 +1,9 @@
 /**
  * Runtime stream reconciliation.
  *
- * The runtime event collector can finish without a complete answer (no first
- * delta, idle cutoff, rejected subscription, reasoning-only stream). These
- * helpers decide when to reconcile against the authoritative session snapshot
- * and which remaining deltas to emit. They deliberately do not own retries,
- * sessions, tool parsing or HTTP response framing.
+ * Reconciles a runtime event stream that ended without a complete answer (no
+ * first delta, idle cutoff, rejected subscription, reasoning-only) against the
+ * authoritative session snapshot, and emits the remaining deltas.
  *
  * @module routes/runtime-reconciliation
  */

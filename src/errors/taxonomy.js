@@ -1,10 +1,7 @@
 /**
- * Error taxonomy for the gateway.
- *
- * Every failure a layer raises is one of these codes, so routes, the conversation
- * layer and the upstream clients share one vocabulary. The code strings are part
- * of the public HTTP contract (`docs/zh/api-reference.md`): `toOpenAIError` copies
- * them into `error.code`.
+ * Error taxonomy for the gateway: every failure a layer raises is one of these
+ * codes, and the code strings are public HTTP contract
+ * (`docs/zh/api-reference.md`), copied into `error.code` by `toOpenAIError`.
  *
  * @module errors/taxonomy
  */

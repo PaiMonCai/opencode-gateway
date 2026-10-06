@@ -1,9 +1,8 @@
 /**
  * Operational route surface: `/health`, `/health/details`, `/metrics`.
  *
- * Each endpoint decides its own auth policy (the global middleware bypasses
- * these paths) and then delegates to the turn engine for the payload, which
- * keeps this module free of business logic.
+ * Payloads and their auth policy come from the turn engine; this module only
+ * binds the documented paths.
  *
  * @module routes/health
  */

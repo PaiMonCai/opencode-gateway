@@ -1,10 +1,7 @@
 /**
- * Process layer: listening socket, managed backend and graceful shutdown.
- *
- * The backend (`opencode serve`) is only spawned when `MANAGE_BACKEND` is on; a
- * backend started elsewhere is health-checked instead. Shutdown on SIGINT/SIGTERM
- * stops accepting connections, kills a backend this process started, and removes
- * the temporary jail directories it created.
+ * Process layer: listening socket, managed backend and graceful shutdown. The
+ * backend (`opencode serve`) is spawned only when `MANAGE_BACKEND` is on; a
+ * backend started elsewhere is health-checked instead.
  *
  * @module server
  */
@@ -239,9 +236,6 @@ function resolveOpencodePath(requestedPath) {
     return { path: null, source: 'not-found' };
 }
 
-/**
- * Robust Health Check Helper
- */
 function buildBackendAuthHeaders(password = '') {
     if (!password) return undefined;
     const token = Buffer.from(`opencode:${password}`).toString('base64');
@@ -291,12 +285,8 @@ export function checkHealth(serverUrl, password = '') {
     });
 }
 
-/**
- * Cleanup temporary directories
- */
 function cleanupTempDirs() {
-    // Only cleanup jail directories on non-Windows platforms
-    // On Windows, we don't use isolated jail to avoid path issues
+    // No jail is created on Windows, so there is nothing to remove there.
     if (process.platform === 'win32') return;
 
     const jailRoot = path.join(os.tmpdir(), 'opencode-proxy-jail');
@@ -309,10 +299,8 @@ function cleanupTempDirs() {
     }
 }
 
-// Register cleanup on exit
 process.on('exit', cleanupTempDirs);
 
-// Handle signals - Unix-like systems
 if (process.platform !== 'win32') {
     process.on('SIGINT', () => {
         console.log('\n[Shutdown] Received SIGINT, cleaning up...');
@@ -327,9 +315,6 @@ if (process.platform !== 'win32') {
 }
 // Note: Windows signal handling is limited, cleanup is handled via process.on('exit')
 
-/**
- * Create Express app with proper configuration
- */
 /** @type {Map<string, BackendState>} */
 const backendState = new Map();
 
@@ -360,8 +345,6 @@ function runtimeProxyEnv(proxyUrl, logger = null) {
     return patch;
 }
 
-// Merges the tool-lock plugin into OPENCODE_CONFIG_CONTENT for the backend the
-// proxy spawns, keeping any config the operator already passes that way.
 /**
  * Merge the tool-lock plugin into `OPENCODE_CONFIG_CONTENT`.
  *
@@ -389,9 +372,6 @@ export function buildBackendConfigContent(existing = process.env.OPENCODE_CONFIG
     return JSON.stringify({ ...base, plugin: plugins });
 }
 
-/**
- * Backend Lifecycle Management
- */
 /**
  * Make sure a backend is reachable, spawning and supervising one when allowed.
  *
@@ -424,7 +404,6 @@ async function ensureManagedBackend(config, logger = {}) {
     const state = /** @type {BackendState} */ (backendState.get(stateKey));
 
     if (state.isStarting) {
-        // Wait for startup to complete
         for (let i = 0; i < STARTING_WAIT_ITERATIONS; i++) {
             await new Promise((r) => setTimeout(r, STARTING_WAIT_INTERVAL_MS));
             try {
@@ -456,7 +435,6 @@ async function ensureManagedBackend(config, logger = {}) {
         state.isStarting = true;
         logger.info?.(`[Proxy] OpenCode backend not found at ${OPENCODE_SERVER_URL}. Starting...`);
 
-        // Kill existing process if any
         if (state.process) {
             try {
                 state.process.kill();
@@ -465,7 +443,6 @@ async function ensureManagedBackend(config, logger = {}) {
             }
         }
 
-        // Cleanup old temp dir
         if (state.jailRoot && fs.existsSync(state.jailRoot)) {
             try {
                 fs.rmSync(state.jailRoot, { recursive: true, force: true });
@@ -475,8 +452,8 @@ async function ensureManagedBackend(config, logger = {}) {
         }
 
         // The tool-lock plugin keeps Zen free models usable (see plugin/), the
-        // server password protects the backend API, and the Zen key unlocks
-        // paid models. `opencode serve` reads all three from the environment.
+        // server password protects the backend API, and the Zen key unlocks paid
+        // models; `opencode serve` reads all three from the environment.
         const backendEnv = {
             OPENCODE_CONFIG_CONTENT: buildBackendConfigContent(),
             ...(OPENCODE_SERVER_PASSWORD ? { OPENCODE_SERVER_PASSWORD } : {}),
@@ -494,15 +471,11 @@ async function ensureManagedBackend(config, logger = {}) {
                 : String(process.env.OPENCODE_USE_ISOLATED_HOME || '').toLowerCase() === 'true' ||
                   process.env.OPENCODE_USE_ISOLATED_HOME === '1';
 
-        // On Windows, don't use isolated fake-home to avoid path issues
-        // On Unix-like systems, use jail for isolation
         const salt = Math.random().toString(36).substring(7);
         const jailRoot = path.join(os.tmpdir(), 'opencode-proxy-jail', salt);
         state.jailRoot = jailRoot;
-        // The jail root lives on the backend state, not on `config`: the config is
-        // frozen (mutating it throws in strict mode) and the engine reads its own
-        // copy at construction time anyway. Removal is covered by
-        // `killManagedBackend` (this jail) and `cleanupTempDirs` (the jail root).
+        // The jail root lives on the backend state, not on the frozen `config`, and
+        // is removed by `killManagedBackend` and `cleanupTempDirs`.
         const workspace = path.join(jailRoot, 'empty-workspace');
 
         let envVars;
@@ -523,10 +496,8 @@ async function ensureManagedBackend(config, logger = {}) {
             cwd = workspace;
 
             if (useIsolatedHome) {
-                // Unix-like: use isolated fake-home
                 const fakeHome = path.join(jailRoot, 'fake-home');
 
-                // Create necessary opencode directories
                 const opencodeDir = path.join(fakeHome, '.local', 'share', 'opencode');
                 const storageDir = path.join(opencodeDir, 'storage');
                 const messageDir = path.join(storageDir, 'message');
@@ -589,7 +560,6 @@ async function ensureManagedBackend(config, logger = {}) {
             logger.warn?.(`[Proxy] Unable to resolve OpenCode binary for '${OPENCODE_PATH}'. Using as-is.`);
         }
 
-        // Cross-platform spawn options
         const useShell =
             process.platform === 'win32' ||
             !resolved.path ||
@@ -606,7 +576,6 @@ async function ensureManagedBackend(config, logger = {}) {
         const spawnArgs = ['serve', '--port', port, '--hostname', '127.0.0.1'];
         state.process = spawn(opencodeBin, spawnArgs, spawnOptions);
 
-        // Handle spawn errors
         state.process.on(
             'error',
             /** @param {Error & {code?: string}} err */ (err) => {
@@ -622,7 +591,6 @@ async function ensureManagedBackend(config, logger = {}) {
             }
         );
 
-        // Wait for backend to be ready
         let started = false;
         for (let i = 0; i < STARTUP_WAIT_ITERATIONS; i++) {
             await new Promise((r) => setTimeout(r, STARTUP_WAIT_INTERVAL_MS));
@@ -640,31 +608,20 @@ async function ensureManagedBackend(config, logger = {}) {
 
         if (!started) {
             logger.warn?.('[Proxy] Backend start timed out.');
-            // Keep the caught error as the cause so the failure chain survives
-            // (the lint rule and diagnostics both want the real error here).
+            // Keep the real error as the cause so the failure chain survives.
             throw new Error('Backend start timeout', { cause: err });
         }
     }
 }
 
 /**
- * Starts the OpenCode-to-OpenAI Proxy server.
- */
-
-/**
  * Backend manager: lazy start plus health check of the OpenCode runtime.
  *
  * @param {object} options Manager options.
  * @param {GatewayConfig} options.config Resolved gateway config.
- * @param {ServerLogger} [options.logger] Logger dependency.
- * @returns {{ensureBackend: () => Promise<void>, killBackend: () => void, backendState: Map<string, BackendState>}}
- *   Manager; `killBackend` stops a backend this process spawned.
- */
-/**
- * @param {object} options Manager options.
- * @param {GatewayConfig} options.config Resolved gateway config.
  * @param {ServerLogger|null} [options.logger] Logger dependency.
  * @returns {{ensureBackend: () => Promise<void>, killBackend: () => void, backendState: Map<string, BackendState>}}
+ *   Manager; `killBackend` stops a backend this process spawned.
  */
 export function createBackendManager({ config, logger = null }) {
     const ensureBackend = () => ensureManagedBackend(config, logger || {});

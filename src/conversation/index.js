@@ -1,16 +1,10 @@
 /**
- * Public surface of the conversation layer.
- *
- * `createConversationRegistry` is the entry point wired into the application;
- * the other exports are the pure building blocks, kept public so each can be
- * tested in isolation.
+ * Public surface of the conversation layer: `createConversationRegistry` is the
+ * wired entry point, the other exports are pure building blocks kept public for
+ * isolated testing.
  */
 
-export {
-    createConversationRegistry,
-    resolveConversationSettings,
-    normalizeBool
-} from './registry.js';
+export { createConversationRegistry, resolveConversationSettings, normalizeBool } from './registry.js';
 
 export {
     readHeaderIdentity,

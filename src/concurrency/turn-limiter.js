@@ -1,11 +1,9 @@
 /**
- * Bounded process-wide turn concurrency.
- *
- * Conversation locking answers "may two requests mutate the same session at
- * once?". This limiter answers the different question "how many independent
- * turns may consume runtime/upstream capacity at once?". The queue is bounded
- * both by count and by wait time so overload cannot turn into unbounded memory
- * growth or arbitrarily long tail latency.
+ * Bounded process-wide turn concurrency: conversation locking answers "may two
+ * requests mutate the same session at once?", while this limiter answers "how many
+ * independent turns may consume runtime/upstream capacity at once?". The queue is
+ * bounded by count and wait time, so overload cannot become unbounded memory
+ * growth or long tail latency.
  *
  * @module concurrency/turn-limiter
  */
