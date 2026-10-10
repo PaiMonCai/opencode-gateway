@@ -509,7 +509,8 @@ export async function* transcodeSse(body, source, target, clientModel) {
         const events = normalizeFrame(source, frame, state);
         for (const event of events) {
             if (event.kind === 'error') {
-                for (const chunk of emitter.emit(event)) yield Buffer.from(chunk);
+                // Let the HTTP relay encode exactly one target-native error.
+                // A partial success stream must never receive a second terminal.
                 throw new Error(event.message);
             }
             if (event.kind === 'done') ended = true;
