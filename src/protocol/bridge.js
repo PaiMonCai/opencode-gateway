@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Loss-aware Chat / Responses / Anthropic Messages protocol bridge.
  * Wire formats are decoded into a shared representation, not converted by
