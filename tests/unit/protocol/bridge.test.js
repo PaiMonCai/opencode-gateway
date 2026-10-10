@@ -76,8 +76,11 @@ describe('three-protocol normalized request bridge', () => {
         ).toThrow(/previous_response_id/);
     });
     test('Responses ↔ Anthropic Messages round trips without losing user input', () => {
-        const request = { model: 'my-model', stream: false,
-            input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }] };
+        const request = {
+            model: 'my-model',
+            stream: false,
+            input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }]
+        };
         const messages = convertRequest('responses', 'messages', request);
         expect(messages.messages[0].content[0].text).toBe('hello');
         const back = convertRequest('messages', 'responses', messages);
@@ -191,18 +194,27 @@ describe('Direct gateway active protocol negotiation', () => {
             config: { ZEN_API_KEY: 'secret' },
             fetch: async (url) => {
                 calls.push(url);
-                if (url.endsWith('/models')) return new Response(JSON.stringify({
-                    data: [{ id: 'step-5-preview-free', protocol: 'chat/completions' }]
-                }));
-                return new Response(JSON.stringify({
-                    choices: [{ message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }]
-                }));
+                if (url.endsWith('/models'))
+                    return new Response(
+                        JSON.stringify({
+                            data: [{ id: 'step-5-preview-free', protocol: 'chat/completions' }]
+                        })
+                    );
+                return new Response(
+                    JSON.stringify({
+                        choices: [{ message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }]
+                    })
+                );
             }
         });
         await gateway.listModels();
         calls.length = 0;
-        const result = await gateway.responses({ providerID: 'opencode-go',
-            modelID: 'step-5-preview-free', body: { input: 'hi' }, stream: false });
+        const result = await gateway.responses({
+            providerID: 'opencode-go',
+            modelID: 'step-5-preview-free',
+            body: { input: 'hi' },
+            stream: false
+        });
         expect(result.ok).toBe(true);
         expect(calls).toHaveLength(1);
         expect(calls[0].endsWith('/chat/completions')).toBe(true);
