@@ -36,18 +36,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # TEMP: capture exactly formatted files for synchronization.
-      - name: Format preview
-        run: |
-          files=(src/protocol/stream.js tests/unit/protocol/responses-tool-lifecycle.test.js)
-          npx prettier --write "${files[@]}"
-          for path in "${files[@]}"; do
-            echo "FMTSTART:$path"
-            base64 -w0 "$path"
-            printf '\n'
-            echo "FMTEND:$path"
-          done
-
       - name: Format check
         run: npm run format:check
 
