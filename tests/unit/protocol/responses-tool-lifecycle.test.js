@@ -10,23 +10,46 @@ const chunk = (value) => 'data: ' + JSON.stringify(value) + '\n\n';
 
 async function records(...parts) {
     let output = '';
-    for await (const part of transcodeSse(stream(...parts), 'chat', 'responses', 'opencode-go/step-5-preview-free'))
+    for await (const part of transcodeSse(
+        stream(...parts),
+        'chat',
+        'responses',
+        'opencode-go/step-5-preview-free'
+    ))
         output += part.toString();
     return output
         .split('\n\n')
         .filter(Boolean)
-        .map((record) => JSON.parse(record.split('\n').find((line) => line.startsWith('data:')).slice(5)));
+        .map((record) =>
+            JSON.parse(
+                record
+                    .split('\n')
+                    .find((line) => line.startsWith('data:'))
+                    .slice(5)
+            )
+        );
 }
 
-const toolDelta = (index, call, name, args) => chunk({
-    id: 'upstream',
-    choices: [{
-        index: 0,
-        delta: { tool_calls: [{ index, ...(call && { id: call }), ...(name && { function: { name, arguments: args } }),
-            ...(!name && args !== undefined && { function: { arguments: args } }) }] },
-        finish_reason: null
-    }]
-});
+const toolDelta = (index, call, name, args) =>
+    chunk({
+        id: 'upstream',
+        choices: [
+            {
+                index: 0,
+                delta: {
+                    tool_calls: [
+                        {
+                            index,
+                            ...(call && { id: call }),
+                            ...(name && { function: { name, arguments: args } }),
+                            ...(!name && args !== undefined && { function: { arguments: args } })
+                        }
+                    ]
+                },
+                finish_reason: null
+            }
+        ]
+    });
 
 describe('DSH/pi-ai Responses function-call lifecycle', () => {
     test('bash tool finishes arguments AND output item before response.completed', async () => {
@@ -38,22 +61,34 @@ describe('DSH/pi-ai Responses function-call lifecycle', () => {
             'data: [DONE]\n\n'
         );
 
-        const added = events.find((e) => e.type === 'response.output_item.added' && e.item.type === 'function_call');
+        const added = events.find(
+            (e) => e.type === 'response.output_item.added' && e.item.type === 'function_call'
+        );
         const argDelta = events.find((e) => e.type === 'response.function_call_arguments.delta');
         const argDone = events.find((e) => e.type === 'response.function_call_arguments.done');
         const itemDone = events.find((e) => e.type === 'response.output_item.done');
         const completed = events.find((e) => e.type === 'response.completed');
         expect(added.item).toMatchObject({
-            type: 'function_call', call_id: 'call_abc', name: 'bash', status: 'in_progress'
+            type: 'function_call',
+            call_id: 'call_abc',
+            name: 'bash',
+            status: 'in_progress'
         });
         expect(argDelta.item_id).toBe(added.item.id);
         expect(argDone).toMatchObject({
-            item_id: added.item.id, output_index: added.output_index, arguments: args
+            item_id: added.item.id,
+            output_index: added.output_index,
+            arguments: args
         });
         expect(itemDone).toMatchObject({
             output_index: added.output_index,
-            item: { id: added.item.id, call_id: 'call_abc', name: 'bash',
-                arguments: args, status: 'completed' }
+            item: {
+                id: added.item.id,
+                call_id: 'call_abc',
+                name: 'bash',
+                arguments: args,
+                status: 'completed'
+            }
         });
         expect(completed.response.output).toContainEqual(itemDone.item);
         expect(completed.response.status).toBe('completed');
@@ -103,8 +138,9 @@ describe('DSH/pi-ai Responses function-call lifecycle', () => {
     });
 
     test('malformed or truncated tool JSON must not announce success', async () => {
-        await expect(records(toolDelta(0, 'call_bad', 'bash', '{"command":'), 'data: [DONE]\n\n'))
-            .rejects.toThrow(/incomplete or invalid JSON/);
+        await expect(
+            records(toolDelta(0, 'call_bad', 'bash', '{"command":'), 'data: [DONE]\n\n')
+        ).rejects.toThrow(/incomplete or invalid JSON/);
     });
 
     test('length-limited text is marked incomplete rather than completed', async () => {
@@ -120,7 +156,8 @@ describe('DSH/pi-ai Responses function-call lifecycle', () => {
     });
 
     test('upstream crash after tool start never produces a completed item', async () => {
-        await expect(records(toolDelta(0, 'call_a', 'bash', '{"command":"ls"}')))
-            .rejects.toThrow(/without success/);
+        await expect(records(toolDelta(0, 'call_a', 'bash', '{"command":"ls"}'))).rejects.toThrow(
+            /without success/
+        );
     });
 });
