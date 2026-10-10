@@ -25,7 +25,7 @@ import { relayDirectSse } from './streaming/sse.js';
 
 /**
  * @typedef {object} DirectTurnParams
- * @property {'/chat/completions'|'/responses'} path Upstream surface.
+ * @property {'/chat/completions'|'/responses'|'/messages'} path Upstream surface.
  * @property {import('express').Response} res Downstream response.
  * @property {string} providerID Provider id.
  * @property {string} modelID Bare model id.
@@ -89,9 +89,9 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             logWarn('[Proxy] Direct upstream request failed:', {
                 error: /** @type {Error} */ (error).message
             });
-            if (error?.code === 'protocol_conversion_error') {
+            if (error && typeof error === 'object' && 'code' in error && error.code === 'protocol_conversion_error') {
                 res.status(422).json({
-                    error: { type: 'protocol_conversion_error', message: error.message }
+                    error: { type: 'protocol_conversion_error', message: /** @type {Error} */ (error).message }
                 });
                 return { handled: true };
             }
