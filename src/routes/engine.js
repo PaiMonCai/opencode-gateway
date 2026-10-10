@@ -18,6 +18,7 @@ import { createModelResolver } from './model-resolver.js';
 import { createResponseChainIndex } from '../conversation/response-chains.js';
 import { createStorageCleanup } from '../conversation/storage-cleanup.js';
 import { createDirectTurnRunner } from './direct-turn.js';
+import { newSessionId } from '../upstreams/direct-client.js';
 import { createRuntimeTurnService } from './runtime-service.js';
 import {
     buildDisabledToolOverrides,
@@ -1022,9 +1023,77 @@ export function createTurnEngine({
         DISABLE_TOOLS
     });
 
+    /**
+     * Anthropic Messages uses the same Direct adapter as Chat/Responses.
+     * Runtime-only models remain on the existing Chat/Responses surfaces;
+     * there is no misleading translation of local SDK sessions.
+     */
+    /** @param {import('express').Request} req @param {import('express').Response} res */
+    const handleMessages = async (req, res) => {
+        /** @type {null|(()=>void)} */
+        let releaseCapacity = null;
+        const turnAbort = new AbortController();
+        res.on('close', () => {
+            if (!res.writableEnded) turnAbort.abort();
+        });
+        try {
+            const body = req.body || {};
+            if (!body.model || !Array.isArray(body.messages) || !body.messages.length) {
+                res.status(400).json({
+                    type: 'error',
+                    error: {
+                        type: 'invalid_request_error',
+                        message: 'model and non-empty messages are required'
+                    }
+                });
+                return;
+            }
+            const resolved = await resolveRequestedModel(body.model);
+            if (!router.shouldUseDirect(resolved.providerID, resolved.modelID).direct) {
+                res.status(422).json({
+                    type: 'error',
+                    error: {
+                        type: 'invalid_request_error',
+                        message: 'Anthropic Messages currently requires an authenticated Direct upstream'
+                    }
+                });
+                return;
+            }
+            releaseCapacity = await acquireTurnCapacity(res, turnAbort.signal);
+            if (!releaseCapacity) return;
+            await runDirectTurn({
+                path: '/messages',
+                res,
+                providerID: resolved.providerID,
+                modelID: resolved.modelID,
+                sessionId:
+                    req.get('x-deepseek-harness-session-id') ||
+                    req.get('x-opencode-session') ||
+                    newSessionId(),
+                body,
+                stream: !!body.stream,
+                clientModelName: resolved.resolved,
+                signal: turnAbort.signal
+            });
+        } catch (e) {
+            if (!res.headersSent) {
+                res.status(/** @type {{statusCode?: number}} */ (e)?.statusCode || 502).json({
+                    type: 'error',
+                    error: {
+                        type: /** @type {{code?: string}} */ (e)?.code || 'upstream_error',
+                        message: e instanceof Error ? e.message : 'Upstream failed'
+                    }
+                });
+            }
+        } finally {
+            releaseCapacity?.();
+        }
+    };
+
     return {
         handleChat,
         handleResponses,
+        handleMessages,
         handleHealth,
         handleHealthDetails,
         handleMetrics,

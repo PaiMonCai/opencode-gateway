@@ -12,6 +12,7 @@ Base URL: `http://127.0.0.1:10000`. When `API_KEY` is set, `/v1/*` requests need
 | `GET` | `/v1/models` | List models (falls back to the public upstream catalogs when the runtime is unavailable) |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |
+| `POST` | `/v1/messages` | Anthropic Messages (Direct models) |
 
 ## 🧭 Request headers
 
@@ -29,11 +30,18 @@ The middleware picks the upstream per model; clients do not need to care:
 
 | Model | Upstream | Notes |
 |:--|:--|:--|
-| `opencode-go/*` | direct to `https://opencode.ai/zen/go/v1` | Go subscription; request and response bodies forwarded as-is |
+| `opencode-go/*` | direct to `https://opencode.ai/zen/go/v1` | Go subscription; automatic model-native protocol routing and conversion |
 | paid `opencode/*` | direct to `https://opencode.ai/zen/v1` | pay-as-you-go Zen |
 | `opencode/*-free` (and free-tier models learned from a refusal) | local runtime | the free-tier gate cannot be satisfied by a plain HTTP client |
 
-In direct mode the upstream's status codes and bodies are relayed **verbatim** (`401 Invalid API key.`, `403 FreeTierError`, rate limits, ...); only the `model` field is rewritten to the name the client asked for. A refusal or transport failure falls back to the runtime unless `OPENCODE_PROXY_DIRECT_FALLBACK=false`.
+Direct requests are passed through unchanged when client and upstream protocols match. For mismatched protocols,
+the Gateway translates both directions. It first checks the provider's model metadata; an unknown model only triggers a
+bounded protocol retry on a **specific `400 ModelProtocolUnsupported`** error and then remembers the successful protocol
+per provider/model. Ordinary 400, authentication failures and rate limits do not trigger protocol retries.
+
+The bridge covers request/JSON response translation and incremental SSE for text, tool calls, reasoning text and basic
+usage. Unsupported stateful semantics (for example a `previous_response_id` without the full transcript) return an
+explicit `422 protocol_conversion_error`, not silent data loss. Runtime-only free models keep their existing routing.
 
 ### GET /v1/models
 
@@ -123,6 +131,16 @@ Pass the previous response ID as `previous_response_id` to continue the same ses
 
 - Session state is kept for 30 minutes. Expired upstream sessions are cleaned up automatically.
 - Invalid or expired IDs return 400 `Invalid or expired previous_response_id`.
+
+## 📨 Anthropic Messages
+
+```http
+POST /v1/messages
+```
+
+The Direct Go/Zen path accepts Anthropic Messages with `model`, `messages`, `system`, `tools`,
+`max_tokens` and `stream`. The Gateway selects the model's upstream protocol and converts both
+directions; Runtime-only models are not supported on this surface.
 
 ## 🔧 Tool Calls
 

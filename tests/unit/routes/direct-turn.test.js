@@ -113,6 +113,33 @@ describe('direct turn runner', () => {
         expect(res.headersSent).toBe(false);
     });
 
+    test('Messages Direct returns authentication error without attempting runtime fallback', async () => {
+        const direct = {
+            messages: async () =>
+                new Response('denied', {
+                    status: 401,
+                    headers: { 'content-type': 'text/plain' }
+                })
+        };
+        const fallbacks = [];
+        const router = { allowsFallback: () => true, fallback: (...args) => fallbacks.push(args) };
+        const run = createDirectTurnRunner({ direct, router });
+        const res = makeRes();
+        const result = await run({
+            path: '/messages',
+            res,
+            providerID: 'opencode-go',
+            modelID: 'model',
+            sessionId: 's',
+            body: {},
+            stream: false,
+            clientModelName: 'opencode-go/model',
+            signal
+        });
+        expect(result).toEqual({ handled: true });
+        expect(res.statusCode).toBe(401);
+        expect(fallbacks).toEqual([]);
+    });
     test('relays upstream errors verbatim when fallback is disabled', async () => {
         const direct = {
             responses: async () =>

@@ -7,7 +7,13 @@
  * @module routes/direct-turn
  */
 
-import { extractAssistantText, isDirectAuthFailure, isFreeTierRefusal } from '../upstreams/direct-client.js';
+import {
+    extractAssistantText,
+    isDirectAuthFailure,
+    isFreeTierRefusal,
+    upstreamProtocolOf
+} from '../upstreams/direct-client.js';
+import { convertResponse } from '../protocol/bridge.js';
 import { relayDirectSse } from './streaming/sse.js';
 
 /**
@@ -19,7 +25,7 @@ import { relayDirectSse } from './streaming/sse.js';
 
 /**
  * @typedef {object} DirectTurnParams
- * @property {'/chat/completions'|'/responses'} path Upstream surface.
+ * @property {'/chat/completions'|'/responses'|'/messages'} path Upstream surface.
  * @property {import('express').Response} res Downstream response.
  * @property {string} providerID Provider id.
  * @property {string} modelID Bare model id.
@@ -60,7 +66,7 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             sessionId,
             signal
         };
-        const allowsFallback = router.allowsFallback();
+        const allowsFallback = path !== '/messages' && router.allowsFallback();
 
         /**
          * @param {'free-tier'|'auth'|'transport'} reason Failure kind.
@@ -76,11 +82,27 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             upstreamResponse =
                 path === '/chat/completions'
                     ? await direct.chatCompletion(directRequest)
-                    : await direct.responses(directRequest);
+                    : path === '/messages'
+                      ? await direct.messages(directRequest)
+                      : await direct.responses(directRequest);
         } catch (error) {
             logWarn('[Proxy] Direct upstream request failed:', {
                 error: /** @type {Error} */ (error).message
             });
+            if (
+                error &&
+                typeof error === 'object' &&
+                'code' in error &&
+                error.code === 'protocol_conversion_error'
+            ) {
+                res.status(422).json({
+                    error: {
+                        type: 'protocol_conversion_error',
+                        message: error instanceof Error ? error.message : 'Invalid protocol request'
+                    }
+                });
+                return { handled: true };
+            }
             if (allowsFallback) return fallback('transport');
             throw error;
         }
@@ -133,11 +155,25 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             );
         }
 
+        const incoming =
+            path === '/chat/completions' ? 'chat' : path === '/responses' ? 'responses' : 'messages';
+        const native = upstreamProtocolOf(upstreamResponse, incoming);
         const contentType = upstreamResponse.headers?.get?.('content-type') || '';
         const isEventStream = Boolean(stream) && (contentType.includes('text/event-stream') || !contentType);
 
         if (!isEventStream) {
-            const payload = await upstreamResponse.json();
+            let payload;
+            try {
+                payload = convertResponse(native, incoming, await upstreamResponse.json());
+            } catch (error) {
+                res.status(502).json({
+                    error: {
+                        type: 'protocol_conversion_error',
+                        message: error instanceof Error ? error.message : 'Invalid upstream response'
+                    }
+                });
+                return { handled: true };
+            }
             const answerText = extractAssistantText(payload);
             if (payload && typeof payload === 'object') {
                 if (payload.model !== undefined) payload.model = clientModelName;
@@ -158,7 +194,9 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             res,
             body: upstreamResponse.body,
             clientModelName,
-            onSuccess
+            onSuccess,
+            sourceProtocol: native,
+            targetProtocol: incoming
         });
         return { handled: true };
     };
