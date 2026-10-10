@@ -1032,14 +1032,24 @@ export function createTurnEngine({
         try {
             const body = req.body || {};
             if (!body.model || !Array.isArray(body.messages) || !body.messages.length) {
-                res.status(400).json({ type: 'error', error: { type: 'invalid_request_error',
-                    message: 'model and non-empty messages are required' } });
+                res.status(400).json({
+                    type: 'error',
+                    error: {
+                        type: 'invalid_request_error',
+                        message: 'model and non-empty messages are required'
+                    }
+                });
                 return;
             }
             const resolved = await resolveRequestedModel(body.model);
             if (!router.shouldUseDirect(resolved.providerID, resolved.modelID).direct) {
-                res.status(422).json({ type: 'error', error: { type: 'invalid_request_error',
-                    message: 'Anthropic Messages currently requires an authenticated Direct upstream' } });
+                res.status(422).json({
+                    type: 'error',
+                    error: {
+                        type: 'invalid_request_error',
+                        message: 'Anthropic Messages currently requires an authenticated Direct upstream'
+                    }
+                });
                 return;
             }
             const turnAbort = new AbortController();
@@ -1047,17 +1057,28 @@ export function createTurnEngine({
                 if (!res.writableEnded) turnAbort.abort();
             });
             await runDirectTurn({
-                path: '/messages', res, providerID: resolved.providerID, modelID: resolved.modelID,
-                sessionId: req.get('x-deepseek-harness-session-id')
-                    || req.get('x-opencode-session') || newSessionId(),
-                body, stream: !!body.stream, clientModelName: resolved.resolved,
+                path: '/messages',
+                res,
+                providerID: resolved.providerID,
+                modelID: resolved.modelID,
+                sessionId:
+                    req.get('x-deepseek-harness-session-id') ||
+                    req.get('x-opencode-session') ||
+                    newSessionId(),
+                body,
+                stream: !!body.stream,
+                clientModelName: resolved.resolved,
                 signal: turnAbort.signal
             });
         } catch (e) {
             if (!res.headersSent) {
-                res.status(e.statusCode || 502).json({ type: 'error', error: {
-                    type: e.code || 'upstream_error', message: e.message || 'Upstream failed'
-                } });
+                res.status(e.statusCode || 502).json({
+                    type: 'error',
+                    error: {
+                        type: e.code || 'upstream_error',
+                        message: e.message || 'Upstream failed'
+                    }
+                });
             }
         }
     };
