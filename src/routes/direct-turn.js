@@ -66,7 +66,7 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             sessionId,
             signal
         };
-        const allowsFallback = router.allowsFallback();
+        const allowsFallback = path !== '/messages' && router.allowsFallback();
 
         /**
          * @param {'free-tier'|'auth'|'transport'} reason Failure kind.
