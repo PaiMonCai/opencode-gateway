@@ -12,6 +12,7 @@ Base URL：`http://127.0.0.1:10000`。配置了 `API_KEY` 时，`/v1/*` 请求�
 | `GET` | `/v1/models` | 模型列表（runtime 不可用时改由上游公开目录提供） |
 | `POST` | `/v1/chat/completions` | Chat Completions |
 | `POST` | `/v1/responses` | Responses API |
+| `POST` | `/v1/messages` | Anthropic Messages（Direct 模型） |
 
 ## 🧭 请求头
 
@@ -29,11 +30,17 @@ Base URL：`http://127.0.0.1:10000`。配置了 `API_KEY` 时，`/v1/*` 请求�
 
 | 模型 | 上游 | 说明 |
 |:--|:--|:--|
-| `opencode-go/*` | 直连 `https://opencode.ai/zen/go/v1` | Go 订阅额度，请求/响应体原样转发 |
+| `opencode-go/*` | 直连 `https://opencode.ai/zen/go/v1` | Go 订阅，Gateway 自动选择原生协议并双向转换 |
 | 付费 `opencode/*` | 直连 `https://opencode.ai/zen/v1` | 按量 Zen 额度 |
 | `opencode/*-free`（及学习到的免费档模型） | 本地 runtime | 免费档闸门无法用请求头绕过 |
 
-直连模式下上游的错误码与响应体**原样回传**（例如 `401 Invalid API key.`、`403 FreeTierError`、限流等）；只有 `model` 字段会被改回客户端请求的模型名。直连被拒或网络失败时会回退 runtime（`OPENCODE_PROXY_DIRECT_FALLBACK=false` 可关闭）。
+直连模式下，同协议请求原样透传，跨协议请求由 Gateway 自行转换。优先使用模型目录的协议元数据；
+未知模型若返回 `400 ModelProtocolUnsupported`，只会针对该错误尝试其他协议，成功后记住此 provider/model 的路由。
+**普通 400、401/403、限流及网络错误不会引发协议遍历。** 后三者仍使用已有的直连失败/Runtime 回退处理策略。
+
+跨协议会转换请求、正常 JSON 响应以及逐事件 SSE（包括文本、工具调用参数、推理文本及基础 usage）。
+无法等价表示的请求会以 `422 protocol_conversion_error` 明确拒绝，尤其是在没有完整历史时无法将
+`previous_response_id` 转译到另一个协议。此功能仅增强 Direct；免费模型仍走原有 Runtime 路径。
 
 ### GET /v1/models
 
@@ -123,6 +130,16 @@ curl -N -X POST http://127.0.0.1:10000/v1/responses \
 
 - 会话状态保留 30 分钟，过期后自动清理上游会话。
 - ID 无效或过期返回 400 `Invalid or expired previous_response_id`。
+
+## 📨 Anthropic Messages
+
+```http
+POST /v1/messages
+```
+
+Direct Go / Zen 提供三协议入口，客户端使用自己的协议即可，不需要逐模型修改配置。
+此入口支持 `model`、`messages`、`system`、`tools`、`max_tokens`、`stream`，
+要求有可用的 Direct 上游和有效的 API 认证；Runtime-only 模型会返回明确错误，不会伪造 Messages 兼容行为。
 
 ## 🔧 工具调用
 
