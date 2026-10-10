@@ -107,7 +107,6 @@ function makeEmitter(target, clientModel, state) {
     let usage = null;
     let content = '';
     let hasTools = false;
-    const doneFrames = [];
     const messageId = uid('msg_');
     const responseId = uid('resp_');
     const ensureStart = () => {
