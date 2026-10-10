@@ -73,6 +73,8 @@ export function startSseKeepalive(res, intervalMs = 15000) {
  * @param {any} options.body Upstream response body.
  * @param {string} options.clientModelName Client-visible model name.
  * @param {((text: string|null) => void)|null} [options.onSuccess] Completion observer.
+ * @param {string|null} [options.sourceProtocol] Direct upstream's selected protocol.
+ * @param {string|null} [options.targetProtocol] Client-requested protocol.
  * @returns {Promise<string>} Text observed across streamed deltas.
  */
 export async function relayDirectSse({
