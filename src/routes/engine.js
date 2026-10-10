@@ -1030,6 +1030,12 @@ export function createTurnEngine({
      */
     /** @param {import('express').Request} req @param {import('express').Response} res */
     const handleMessages = async (req, res) => {
+        /** @type {null|(()=>void)} */
+        let releaseCapacity = null;
+        const turnAbort = new AbortController();
+        res.on('close', () => {
+            if (!res.writableEnded) turnAbort.abort();
+        });
         try {
             const body = req.body || {};
             if (!body.model || !Array.isArray(body.messages) || !body.messages.length) {
@@ -1053,10 +1059,8 @@ export function createTurnEngine({
                 });
                 return;
             }
-            const turnAbort = new AbortController();
-            res.on('close', () => {
-                if (!res.writableEnded) turnAbort.abort();
-            });
+            releaseCapacity = await acquireTurnCapacity(res, turnAbort.signal);
+            if (!releaseCapacity) return;
             await runDirectTurn({
                 path: '/messages',
                 res,
@@ -1081,6 +1085,8 @@ export function createTurnEngine({
                     }
                 });
             }
+        } finally {
+            releaseCapacity?.();
         }
     };
 
