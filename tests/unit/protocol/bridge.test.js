@@ -189,7 +189,7 @@ describe('Direct gateway active protocol negotiation', () => {
         const calls = [];
         const gateway = createDirectUpstream({
             config: { ZEN_API_KEY: 'secret' },
-            fetch: async (url, init) => {
+            fetch: async (url) => {
                 calls.push(url);
                 if (url.endsWith('/models')) return new Response(JSON.stringify({
                     data: [{ id: 'step-5-preview-free', protocol: 'chat/completions' }]
