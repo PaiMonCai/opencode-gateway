@@ -91,7 +91,7 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             });
             if (error && typeof error === 'object' && 'code' in error && error.code === 'protocol_conversion_error') {
                 res.status(422).json({
-                    error: { type: 'protocol_conversion_error', message: /** @type {Error} */ (error).message }
+                    error: { type: 'protocol_conversion_error', message: error instanceof Error ? error.message : 'Invalid protocol request' }
                 });
                 return { handled: true };
             }
