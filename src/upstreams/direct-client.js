@@ -3,6 +3,7 @@ import { convertRequest, protocolPath } from '../protocol/bridge.js';
 import { resolveLogger, toBool, toMillis } from './support.js';
 
 const upstreamProtocolByResponse = new WeakMap();
+/** @param {Response} response @param {string} [fallback] */
 export const upstreamProtocolOf = (response, fallback = 'chat') =>
     upstreamProtocolByResponse.get(response) || fallback;
 
@@ -24,6 +25,9 @@ export const upstreamProtocolOf = (response, fallback = 'chat') =>
  * @property {string} [object] Always `model`.
  * @property {number} [created] Unix seconds.
  * @property {string} [owned_by] Provider id.
+ * @property {string} [protocol] Upstream protocol when advertised.
+ * @property {string} [api] Upstream API when advertised.
+ * @property {string} [npm] Provider SDK package when advertised.
  *
  * @typedef {'free-tier'|'auth'|null} DirectFailureKind
  */
@@ -397,7 +401,7 @@ export async function requestUpstream({
  * @param {typeof fetch} [options.fetchImpl] Fetch implementation.
  * @param {number} [options.ttlMs] Cache lifetime, default 10 minutes.
  * @param {any} [options.logger] Logger dependency.
- * @returns {{getModels: (options?: Record<string, any>) => Promise<DirectLabels[]>, invalidate: () => void}}
+ * @returns {{getModels: (options?: Record<string, any>) => Promise<DirectLabels[]>, invalidate: () => void, peek: () => DirectLabels[]}}
  *   Cached catalog accessor.
  */
 export function createModelCatalog({
@@ -534,6 +538,7 @@ export function createModelCatalog({
  * @returns {{
  *   chatCompletion: (ctx: DirectContext) => Promise<Response>,
  *   responses: (ctx: DirectContext) => Promise<Response>,
+ *   messages: (ctx: DirectContext) => Promise<Response>,
  *   listModels: () => Promise<DirectLabels[]>,
  *   supports: (providerID: string) => boolean,
  *   hasCredentials: () => boolean,
@@ -556,6 +561,7 @@ export function createDirectUpstream({
 
     const catalog = createModelCatalog({ fetchImpl, logger: log });
     const learnedProtocols = new Map();
+    /** @param {DirectLabels|Record<string,string>} model */
     const protocolForModel = (model) => {
         const explicit = String(model.protocol || model.api || '').toLowerCase();
         const npm = String(model.npm || '').toLowerCase();
@@ -564,6 +570,7 @@ export function createDirectUpstream({
         if (explicit.includes('chat/completions') || npm.includes('openai-compatible')) return 'chat';
         return null;
     };
+    /** @param {number} status @param {string} body */
     const isProtocolMismatch = (status, body) =>
         status === 400 && /ModelProtocolUnsupported|model does not support this protocol/i.test(body);
 
@@ -573,16 +580,16 @@ export function createDirectUpstream({
      * 400 triggers at most two converted attempts. Successful routes are
      * remembered per provider/model, never shared between Go and Zen.
      */
+    /** @param {DirectContext} ctx @param {'chat'|'responses'|'messages'} inbound @returns {Promise<Response>} */
     const dispatch = async (ctx, inbound) => {
         const { providerID, modelID, body, stream, sessionId, signal, requestId } = ctx || {};
         const baseUrl = resolveBaseUrlForProvider(providerID, { goBaseUrl, zenBaseUrl });
         const key = providerID + '/' + modelID;
-        const cachedModels = await Promise.resolve(catalogCachedModels());
+        const cachedModels = catalogCachedModels();
         const model = cachedModels.find((entry) => entry.id === key);
         const preferred = learnedProtocols.get(key) || protocolForModel(model || {}) || inbound;
         const order = [...new Set([preferred, inbound, 'chat', 'responses', 'messages'])];
-        let lastResponse;
-        for (let i = 0; i < order.length; i++) {
+         for (let i = 0; i < order.length; i++) {
             const upstreamProtocol = order[i];
             const upstreamBody = convertRequest(inbound, upstreamProtocol, {
                 ...body,
@@ -617,14 +624,13 @@ export function createDirectUpstream({
                 upstreamProtocolByResponse.set(final, upstreamProtocol);
                 return final;
             }
-            lastResponse = response;
-            log.debug('Retrying model with another native protocol', {
+             log.debug('Retrying model with another native protocol', {
                 providerID,
                 modelID,
                 protocol: upstreamProtocol
             });
         }
-        return lastResponse;
+        throw new Error('No upstream protocol candidates available');
     };
     const catalogCachedModels = () => catalog.peek?.() || [];
 
