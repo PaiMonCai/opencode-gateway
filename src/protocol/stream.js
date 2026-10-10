@@ -123,9 +123,12 @@ function makeEmitter(target, clientModel, state) {
     let finalReason = 'stop';
     let usage = null;
     let content = '';
+    let reasoningContent = '';
     let hasTools = false;
     const messageId = uid('msg_');
+    const reasoningId = uid('rs_');
     const responseId = uid('resp_');
+    const completedItems = [];
     const ensureStart = () => {
         if (started) return [];
         started = true;
@@ -263,6 +266,19 @@ function makeEmitter(target, clientModel, state) {
                                 'text'
                             )
                         );
+                    if (content === e.value)
+                        out.push(
+                            wire(
+                                {
+                                    type: 'response.content_part.added',
+                                    item_id: messageId,
+                                    output_index: textIndex,
+                                    content_index: 0,
+                                    part: { type: 'output_text', text: '', annotations: [] }
+                                },
+                                'response.content_part.added'
+                            )
+                        );
                     out.push(
                         wire(
                             {
@@ -290,13 +306,14 @@ function makeEmitter(target, clientModel, state) {
                 }
             }
             if (e.kind === 'reasoning' && e.value) {
+                reasoningContent += e.value;
                 if (target === 'chat') out.push(chat({ reasoning_content: e.value }));
                 else if (target === 'responses') {
                     if (reasoningIndex === null)
                         out.push(
                             ...startResponseItem(
                                 'reasoning',
-                                { id: uid('rs_'), type: 'reasoning', summary: [] },
+                                { id: reasoningId, type: 'reasoning', summary: [] },
                                 'reasoning'
                             )
                         );
@@ -305,6 +322,7 @@ function makeEmitter(target, clientModel, state) {
                             {
                                 type: 'response.reasoning_summary_text.delta',
                                 output_index: reasoningIndex,
+                                item_id: reasoningId,
                                 summary_index: 0,
                                 delta: e.value
                             },
@@ -334,6 +352,7 @@ function makeEmitter(target, clientModel, state) {
                         id: e.id || uid('call_'),
                         name: e.name || '',
                         args: '',
+                        itemId: uid('fc_'),
                         outputIndex: id.nextIndex++,
                         messageBlock: -1
                     };
@@ -345,7 +364,7 @@ function makeEmitter(target, clientModel, state) {
                                     type: 'response.output_item.added',
                                     output_index: tool.outputIndex,
                                     item: {
-                                        id: uid('fc_'),
+                                        id: tool.itemId,
                                         type: 'function_call',
                                         status: 'in_progress',
                                         call_id: tool.id,
@@ -386,6 +405,7 @@ function makeEmitter(target, clientModel, state) {
                                 {
                                     type: 'response.function_call_arguments.delta',
                                     output_index: tool.outputIndex,
+                                    item_id: tool.itemId,
                                     delta: e.value
                                 },
                                 'response.function_call_arguments.delta'
@@ -453,49 +473,141 @@ function makeEmitter(target, clientModel, state) {
                 );
                 out.push(wire({ type: 'message_stop' }, 'message_stop'));
             } else {
-                if (textIndex !== null)
+                // Complete every advertised output item before response.completed.
+                // DSH's pi-ai client considers missing output_item.done unfinished.
+                for (const tool of tools.values()) {
+                    if (!tool.name) throw new Error('Upstream tool call has no function name');
+                    if (!tool.args.trim()) tool.args = '{}';
+                    try {
+                        const args = JSON.parse(tool.args);
+                        if (!args || typeof args !== 'object' || Array.isArray(args))
+                            throw new Error('Tool arguments must be a JSON object');
+                    } catch {
+                        throw new Error('Upstream tool call arguments are incomplete or invalid JSON');
+                    }
+                }
+                if (reasoningIndex !== null) {
+                    const item = {
+                        id: reasoningId,
+                        type: 'reasoning',
+                        summary: [{ type: 'summary_text', text: reasoningContent }]
+                    };
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.reasoning_summary_text.done',
+                                item_id: reasoningId,
+                                output_index: reasoningIndex,
+                                summary_index: 0,
+                                text: reasoningContent
+                            },
+                            'response.reasoning_summary_text.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_item.done',
+                                output_index: reasoningIndex,
+                                item
+                            },
+                            'response.output_item.done'
+                        )
+                    );
+                    completedItems[reasoningIndex] = item;
+                }
+                if (textIndex !== null) {
+                    const part = { type: 'output_text', text: content, annotations: [] };
+                    const item = {
+                        id: messageId,
+                        type: 'message',
+                        role: 'assistant',
+                        status: 'completed',
+                        content: [part]
+                    };
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_text.done',
+                                item_id: messageId,
+                                output_index: textIndex,
+                                content_index: 0,
+                                text: content
+                            },
+                            'response.output_text.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.content_part.done',
+                                item_id: messageId,
+                                output_index: textIndex,
+                                content_index: 0,
+                                part
+                            },
+                            'response.content_part.done'
+                        )
+                    );
                     out.push(
                         wire(
                             {
                                 type: 'response.output_item.done',
                                 output_index: textIndex,
-                                item: {
-                                    id: messageId,
-                                    type: 'message',
-                                    role: 'assistant',
-                                    status: 'completed',
-                                    content: [{ type: 'output_text', text: content, annotations: [] }]
-                                }
+                                item
                             },
                             'response.output_item.done'
                         )
                     );
-                for (const tool of tools.values())
+                    completedItems[textIndex] = item;
+                }
+                for (const tool of tools.values()) {
+                    const item = {
+                        id: tool.itemId,
+                        type: 'function_call',
+                        status: 'completed',
+                        call_id: tool.id,
+                        name: tool.name,
+                        arguments: tool.args
+                    };
                     out.push(
                         wire(
                             {
                                 type: 'response.function_call_arguments.done',
+                                item_id: tool.itemId,
                                 output_index: tool.outputIndex,
                                 arguments: tool.args
                             },
                             'response.function_call_arguments.done'
                         )
                     );
-                out.push(
-                    wire(
-                        {
-                            type: 'response.completed',
-                            response: {
-                                id: responseId,
-                                model: clientModel,
-                                status: 'completed',
-                                output: [],
-                                usage: usage || { input_tokens: 0, output_tokens: 0 }
-                            }
-                        },
-                        'response.completed'
-                    )
-                );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_item.done',
+                                output_index: tool.outputIndex,
+                                item
+                            },
+                            'response.output_item.done'
+                        )
+                    );
+                    completedItems[tool.outputIndex] = item;
+                }
+                const incomplete = finalReason === 'length' || finalReason === 'max_tokens';
+                const response = {
+                    id: responseId,
+                    object: 'response',
+                    model: clientModel,
+                    status: incomplete ? 'incomplete' : 'completed',
+                    output: completedItems,
+                    usage: usage || { input_tokens: 0, output_tokens: 0 }
+                };
+                if (incomplete) {
+                    response.incomplete_details = { reason: 'max_output_tokens' };
+                    out.push(wire({ type: 'response.incomplete', response }, 'response.incomplete'));
+                } else {
+                    out.push(wire({ type: 'response.completed', response }, 'response.completed'));
+                }
             }
             return out;
         }
