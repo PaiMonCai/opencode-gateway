@@ -8,12 +8,29 @@ const chat = {
     messages: [
         { role: 'system', content: 'Be concise.' },
         { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function',
-            function: { name: 'read', arguments: '{"path":"file.txt"}' } }] },
+        {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+                {
+                    id: 'call_1',
+                    type: 'function',
+                    function: { name: 'read', arguments: '{"path":"file.txt"}' }
+                }
+            ]
+        },
         { role: 'tool', tool_call_id: 'call_1', content: 'contents' }
     ],
-    tools: [{ type: 'function', function: { name: 'read', description: 'Read file',
-        parameters: { type: 'object', properties: { path: { type: 'string' } } } } }],
+    tools: [
+        {
+            type: 'function',
+            function: {
+                name: 'read',
+                description: 'Read file',
+                parameters: { type: 'object', properties: { path: { type: 'string' } } }
+            }
+        }
+    ],
     tool_choice: 'auto',
     stream: false,
     reasoning_effort: 'high'
@@ -23,8 +40,12 @@ describe('three-protocol normalized request bridge', () => {
     test('Chat -> Responses -> Chat keeps tools, IDs, system, reasoning and user data', () => {
         const responses = convertRequest('chat', 'responses', chat);
         expect(responses.instructions).toBe('Be concise.');
-        expect(responses.input).toContainEqual(expect.objectContaining({ type: 'function_call', call_id: 'call_1' }));
-        expect(responses.input).toContainEqual(expect.objectContaining({ type: 'function_call_output', call_id: 'call_1' }));
+        expect(responses.input).toContainEqual(
+            expect.objectContaining({ type: 'function_call', call_id: 'call_1' })
+        );
+        expect(responses.input).toContainEqual(
+            expect.objectContaining({ type: 'function_call_output', call_id: 'call_1' })
+        );
         expect(responses.reasoning.effort).toBe('high');
         const back = convertRequest('responses', 'chat', responses);
         expect(back.messages[0].role).toBe('system');
@@ -34,25 +55,51 @@ describe('three-protocol normalized request bridge', () => {
     test('Chat -> Messages -> Chat preserves function tool result linkage', () => {
         const anthropic = convertRequest('chat', 'messages', chat);
         expect(anthropic.system).toBe('Be concise.');
-        expect(anthropic.messages.some((m) => m.content.some((p) => p.type === 'tool_use' && p.id === 'call_1'))).toBe(true);
-        expect(anthropic.messages.some((m) => m.content.some((p) => p.type === 'tool_result' && p.tool_use_id === 'call_1'))).toBe(true);
+        expect(
+            anthropic.messages.some((m) => m.content.some((p) => p.type === 'tool_use' && p.id === 'call_1'))
+        ).toBe(true);
+        expect(
+            anthropic.messages.some((m) =>
+                m.content.some((p) => p.type === 'tool_result' && p.tool_use_id === 'call_1')
+            )
+        ).toBe(true);
         const back = convertRequest('messages', 'chat', anthropic);
         expect(back.messages.some((m) => m.role === 'tool' && m.tool_call_id === 'call_1')).toBe(true);
     });
     test('Cross-protocol Responses previous_response_id is explicitly rejected, never silently lost', () => {
-        expect(() => convertRequest('responses', 'chat', {
-            model: 'x', input: 'hi', previous_response_id: 'resp_123'
-        })).toThrow(/previous_response_id/);
+        expect(() =>
+            convertRequest('responses', 'chat', {
+                model: 'x',
+                input: 'hi',
+                previous_response_id: 'resp_123'
+            })
+        ).toThrow(/previous_response_id/);
     });
     test('Unknown image/file content fails instead of silently vanishing', () => {
-        expect(() => convertRequest('chat', 'messages', { ...chat,
-            messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: 'abc' }] }]
-        })).toThrow(/Unsupported content block/);
+        expect(() =>
+            convertRequest('chat', 'messages', {
+                ...chat,
+                messages: [{ role: 'user', content: [{ type: 'input_audio', input_audio: 'abc' }] }]
+            })
+        ).toThrow(/Unsupported content block/);
     });
     test('Chat and Responses final answers survive conversion both directions', () => {
-        const answer = { id: 'c1', model: 'bare', choices: [{ message: { content: 'Hello',
-            tool_calls: [{ id: 'c2', type: 'function', function: { name: 'read', arguments: '{}' } }] },
-        finish_reason: 'tool_calls' }], usage: { prompt_tokens: 5, completion_tokens: 4 } };
+        const answer = {
+            id: 'c1',
+            model: 'bare',
+            choices: [
+                {
+                    message: {
+                        content: 'Hello',
+                        tool_calls: [
+                            { id: 'c2', type: 'function', function: { name: 'read', arguments: '{}' } }
+                        ]
+                    },
+                    finish_reason: 'tool_calls'
+                }
+            ],
+            usage: { prompt_tokens: 5, completion_tokens: 4 }
+        };
         const converted = convertResponse('chat', 'responses', answer);
         expect(converted.output.find((x) => x.type === 'function_call').call_id).toBe('c2');
         expect(converted.usage.input_tokens).toBe(5);
@@ -60,16 +107,22 @@ describe('three-protocol normalized request bridge', () => {
         expect(back.choices[0].message.tool_calls[0].id).toBe('c2');
     });
     test('Message tool-use answer converts to OpenAI tool_calls', () => {
-        const native = { id: 'msg_1', model: 'bare', content: [{ type: 'tool_use', id: 'call42',
-            name: 'write', input: { value: 1 } }], stop_reason: 'tool_use', usage: { input_tokens: 5, output_tokens: 2 } };
+        const native = {
+            id: 'msg_1',
+            model: 'bare',
+            content: [{ type: 'tool_use', id: 'call42', name: 'write', input: { value: 1 } }],
+            stop_reason: 'tool_use',
+            usage: { input_tokens: 5, output_tokens: 2 }
+        };
         const converted = convertResponse('messages', 'chat', native);
         expect(converted.choices[0].message.tool_calls[0].function.name).toBe('write');
         expect(converted.choices[0].finish_reason).toBe('tool_calls');
     });
 });
-const streamOf = (...pieces) => (async function* () {
-    for (const p of pieces) yield Buffer.from(p);
-})();
+const streamOf = (...pieces) =>
+    (async function* () {
+        for (const p of pieces) yield Buffer.from(p);
+    })();
 async function outputOf(source, from, to) {
     let result = '';
     for await (const chunk of transcodeSse(source, from, to, 'opencode-go/step-5-preview-free'))
@@ -105,51 +158,80 @@ describe('incremental cross-protocol SSE', () => {
         expect(out).toContain('data: [DONE]');
     });
     test('Anthropic text stream to Chat works without buffering full response', async () => {
-        const out = await outputOf(streamOf(
-            'event: message_start\ndata: {"type":"message_start","message":{"id":"m"}}\n\n',
-            'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n',
-            'event: message_stop\ndata: {"type":"message_stop"}\n\n'
-        ), 'messages', 'chat');
+        const out = await outputOf(
+            streamOf(
+                'event: message_start\ndata: {"type":"message_start","message":{"id":"m"}}\n\n',
+                'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hi"}}\n\n',
+                'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+            ),
+            'messages',
+            'chat'
+        );
         expect(out).toContain('"content":"hi"');
         expect(out).toContain('[DONE]');
     });
     test('truncated stream rejects rather than synthesizing success', async () => {
-        await expect(outputOf(streamOf('data: {"choices": []}\n\n'), 'chat', 'responses'))
-            .rejects.toThrow(/without success/);
+        await expect(outputOf(streamOf('data: {"choices": []}\n\n'), 'chat', 'responses')).rejects.toThrow(
+            /without success/
+        );
     });
 });
 describe('Direct gateway active protocol negotiation', () => {
     test('only ModelProtocolUnsupported triggers converted retry, then caches native protocol', async () => {
         const calls = [];
-        const gateway = createDirectUpstream({ config: { ZEN_API_KEY: 'secret' },
+        const gateway = createDirectUpstream({
+            config: { ZEN_API_KEY: 'secret' },
             fetch: async (url, init) => {
                 calls.push({ url, body: JSON.parse(init.body) });
                 if (url.endsWith('/responses'))
-                    return new Response(JSON.stringify({ error: { type: 'ModelProtocolUnsupported',
-                        message: 'Model does not support this protocol' } }), { status: 400 });
-                return new Response(JSON.stringify({
-                    choices: [{ message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }]
-                }));
-            } });
-        const options = { providerID: 'opencode-go', modelID: 'step-5-preview-free',
-            body: { model: 'step-5-preview-free', input: 'hello' }, stream: false };
+                    return new Response(
+                        JSON.stringify({
+                            error: {
+                                type: 'ModelProtocolUnsupported',
+                                message: 'Model does not support this protocol'
+                            }
+                        }),
+                        { status: 400 }
+                    );
+                return new Response(
+                    JSON.stringify({
+                        choices: [{ message: { role: 'assistant', content: 'OK' }, finish_reason: 'stop' }]
+                    })
+                );
+            }
+        });
+        const options = {
+            providerID: 'opencode-go',
+            modelID: 'step-5-preview-free',
+            body: { model: 'step-5-preview-free', input: 'hello' },
+            stream: false
+        };
         const a = await gateway.responses(options);
         expect(a.status).toBe(200);
         expect(upstreamProtocolOf(a)).toBe('chat');
-        expect(calls.map((c) => new URL(c.url).pathname).slice(0, 2))
-            .toEqual(['/zen/go/v1/responses', '/zen/go/v1/chat/completions']);
+        expect(calls.map((c) => new URL(c.url).pathname).slice(0, 2)).toEqual([
+            '/zen/go/v1/responses',
+            '/zen/go/v1/chat/completions'
+        ]);
         await gateway.responses(options);
         expect(calls.at(-1).url.endsWith('/chat/completions')).toBe(true);
     });
     test('ordinary 400 is never retried', async () => {
         const calls = [];
-        const gateway = createDirectUpstream({ config: { ZEN_API_KEY: 'secret' },
+        const gateway = createDirectUpstream({
+            config: { ZEN_API_KEY: 'secret' },
             fetch: async (url) => {
                 calls.push(url);
-                return new Response(JSON.stringify({ error: { message: 'Invalid arguments' } }), { status: 400 });
-            } });
-        const result = await gateway.chatCompletion({ providerID: 'opencode-go',
-            modelID: 'x', body: { messages: [{ role: 'user', content: 'hi' }] } });
+                return new Response(JSON.stringify({ error: { message: 'Invalid arguments' } }), {
+                    status: 400
+                });
+            }
+        });
+        const result = await gateway.chatCompletion({
+            providerID: 'opencode-go',
+            modelID: 'x',
+            body: { messages: [{ role: 'user', content: 'hi' }] }
+        });
         expect(result.status).toBe(400);
         expect(calls).toHaveLength(1);
     });
