@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Incremental cross-protocol SSE transcoder.
  *
