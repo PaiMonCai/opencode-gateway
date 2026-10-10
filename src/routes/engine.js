@@ -18,6 +18,7 @@ import { createModelResolver } from './model-resolver.js';
 import { createResponseChainIndex } from '../conversation/response-chains.js';
 import { createStorageCleanup } from '../conversation/storage-cleanup.js';
 import { createDirectTurnRunner } from './direct-turn.js';
+import { newSessionId } from '../upstreams/direct-client.js';
 import { createRuntimeTurnService } from './runtime-service.js';
 import {
     buildDisabledToolOverrides,
