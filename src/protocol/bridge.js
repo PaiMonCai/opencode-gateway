@@ -241,11 +241,11 @@ const normUsage = (u, source) => ({
     source
 });
 export function decodeResponse(protocol, data) {
-    let id = data.id || 'resp_' + crypto.randomUUID().replaceAll('-', '');
+    const id = data.id || 'resp_' + crypto.randomUUID().replaceAll('-', '');
     let model = data.model;
     let parts = [];
     let calls = [];
-    let finish = 'stop';
+    let finish;
     if (protocol === 'chat') {
         const choice = data.choices?.[0];
         if (!choice) throw error('Missing Chat completion choice');
