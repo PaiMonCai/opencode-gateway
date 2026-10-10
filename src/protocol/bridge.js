@@ -113,21 +113,24 @@ const toChatMessage = (m) => {
 const decodeChat = (input) => ({
     model: input.model,
     stream: !!input.stream,
-    system: (input.messages || []).filter((m) => m.role === 'system' || m.role === 'developer')
+    system: (input.messages || [])
+        .filter((m) => m.role === 'system' || m.role === 'developer')
         .flatMap((m) => textBlocks(m.content)),
-    messages: (input.messages || []).filter((m) => m.role !== 'system' && m.role !== 'developer').map((m) => ({
-        role: m.role,
-        parts: [
-            ...textBlocks(m.content),
-            ...(m.reasoning_content ? [{ type: 'thinking', text: str(m.reasoning_content) }] : [])
-        ],
-        callId: m.tool_call_id,
-        calls: (m.tool_calls || []).map((c) => ({
-            id: c.id,
-            name: c.function?.name,
-            arguments: c.function?.arguments
-        }))
-    })),
+    messages: (input.messages || [])
+        .filter((m) => m.role !== 'system' && m.role !== 'developer')
+        .map((m) => ({
+            role: m.role,
+            parts: [
+                ...textBlocks(m.content),
+                ...(m.reasoning_content ? [{ type: 'thinking', text: str(m.reasoning_content) }] : [])
+            ],
+            callId: m.tool_call_id,
+            calls: (m.tool_calls || []).map((c) => ({
+                id: c.id,
+                name: c.function?.name,
+                arguments: c.function?.arguments
+            }))
+        })),
     tools: validTools(openAITools(input.tools || [])),
     choice: normalizeChoice(input.tool_choice),
     maxTokens: input.max_completion_tokens ?? input.max_tokens,
