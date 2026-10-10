@@ -14,10 +14,10 @@
 
 ## ✨ 功能特性
 
-- **OpenAI 兼容** — `/v1/models`、`/v1/chat/completions`、`/v1/responses`，完整 SSE 流式输出
+- **三协议接入** — `/v1/models`、`/v1/chat/completions`、`/v1/responses`、`/v1/messages`；Direct Go / Zen 自动跨 Chat、Responses、Anthropic Messages 转换，支持增量 SSE
 - **推理控制** — 支持 `reasoning_effort` 与 `reasoning: {"effort": "high"}`
 - **会话续接** — Responses API 支持 `previous_response_id`，30 分钟 TTL，到期自动清理上游会话
-- **双上游** — Go 订阅/付费 Zen 模型直连 OpenCode 的 OpenAI 兼容端点（请求原样转发、工具原生直通、响应原样回传），免费档模型由本地 runtime 代发（其闸门无法用请求头绕过）
+- **双上游** — Go 订阅/付费 Zen 模型由 Direct 自动选择原生协议（匹配时透传，不兼容时转换），免费档模型由本地 runtime 代发（其闸门无法用请求头绕过）
 - **会话复用** — 客户端用 `session-id` / `x-deepseek-harness-session-id` 等请求头标识对话时，多轮请求复用同一个后端会话，只有新增轮次发给上游；网关透传不了自定义头时可用 `SESSION_DERIVE_ENABLED` 从请求内容推导会话
 - **外部工具桥接** — 客户端传入 `tools`，代理返回标准 `tool_calls` / `function_call`，不触发 OpenCode 内置工具
 - **内置工具 allowlist** — 请求未带 `tools` 时，仅放行 `OPENCODE_INTERNAL_ALLOWED_TOOLS` 声明的内置工具
@@ -108,6 +108,19 @@ curl -X POST http://127.0.0.1:10000/v1/chat/completions \
 ```
 
 模型决定调用工具时，非流式响应返回 `message.tool_calls`，流式响应返回 `delta.tool_calls`。
+
+### OpenCode 原生协议自动转换
+
+选择 `opencode-go/*` 或付费 `opencode/*` 时，客户端可以继续使用原来的 Chat Completions / Responses API。
+Gateway 优先读取模型目录中的 `protocol` / SDK 元数据；对于未知模型，只在上游明确返回
+`ModelProtocolUnsupported`（HTTP 400）时尝试其它原生协议，成功后按 provider/model 缓存路由。
+常规参数错误、鉴权失败和限流**不会**触发协议探测；同协议直接透传。
+
+跨协议转换通过中间表示保留文本、基础推理参数、工具定义/调用 ID/回填结果和 Token 用量；
+SSE 采用逐事件转换，不等待完整回答。另提供 `POST /v1/messages` Anthropic Messages 入口（仅 Direct 模型）。
+
+**限制：** 跨协议重放缺少完整上下文的 `previous_response_id`、不支持的数据块或无法表示的多模态输入会明确失败，不会静默丢弃。
+现有 runtime 路由与免费模型的调用方式没有变化；这些转换不能突破 OpenCode 的账号额度或权限限制。
 
 ## ⚙️ 配置
 
