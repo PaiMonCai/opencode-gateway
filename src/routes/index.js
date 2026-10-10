@@ -24,6 +24,7 @@ import { createResponsesRoute } from './responses.js';
  * @property {(req: import('express').Request, res: import('express').Response) => void} handleMetrics Prometheus handler.
  * @property {(req: import('express').Request, res: import('express').Response) => Promise<void>} handleChat Chat Completions handler.
  * @property {(req: import('express').Request, res: import('express').Response) => Promise<void>} handleResponses Responses handler.
+ * @property {(req: import('express').Request, res: import('express').Response) => Promise<void>} handleMessages Anthropic Messages handler.
  * @property {() => Promise<Array<object>>} listModels Catalog reader.
  */
 
