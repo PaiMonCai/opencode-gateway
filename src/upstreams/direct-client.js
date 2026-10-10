@@ -589,7 +589,7 @@ export function createDirectUpstream({
         const model = cachedModels.find((entry) => entry.id === key);
         const preferred = learnedProtocols.get(key) || protocolForModel(model || {}) || inbound;
         const order = [...new Set([preferred, inbound, 'chat', 'responses', 'messages'])];
-         for (let i = 0; i < order.length; i++) {
+        for (let i = 0; i < order.length; i++) {
             const upstreamProtocol = order[i];
             const upstreamBody = convertRequest(inbound, upstreamProtocol, {
                 ...body,
@@ -624,7 +624,7 @@ export function createDirectUpstream({
                 upstreamProtocolByResponse.set(final, upstreamProtocol);
                 return final;
             }
-             log.debug('Retrying model with another native protocol', {
+            log.debug('Retrying model with another native protocol', {
                 providerID,
                 modelID,
                 protocol: upstreamProtocol
