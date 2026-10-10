@@ -49,6 +49,10 @@ jobs:
             src/routes/index.js
             src/routes/streaming/sse.js
             tests/unit/protocol/bridge.test.js
+            tests/unit/routes/direct-turn.test.js
+            README.md
+            docs/zh/api-reference.md
+            docs/en/api-reference.md
           )
           npx prettier --write "${files[@]}"
           for path in "${files[@]}"; do
