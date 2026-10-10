@@ -1,5 +1,10 @@
 import crypto from 'crypto';
+import { convertRequest, protocolPath } from '../protocol/bridge.js';
 import { resolveLogger, toBool, toMillis } from './support.js';
+
+const upstreamProtocolByResponse = new WeakMap();
+export const upstreamProtocolOf = (response, fallback = 'chat') =>
+    upstreamProtocolByResponse.get(response) || fallback;
 
 /**
  * Direct upstream client: OpenCode's own OpenAI-compatible endpoints
@@ -434,7 +439,10 @@ export function createModelCatalog({
                     name: model.name || model.id,
                     object: 'model',
                     created: model.created || Math.floor(Date.now() / 1000),
-                    owned_by: providerID
+                    owned_by: providerID,
+                    ...(model.protocol && { protocol: model.protocol }),
+                    ...(model.api && { api: model.api }),
+                    ...(model.npm && { npm: model.npm })
                 }));
         } catch (error) {
             log.warn('Failed to fetch upstream model catalog', {
@@ -465,6 +473,7 @@ export function createModelCatalog({
     };
 
     return {
+        peek: () => cached || [],
         /**
          * @param {object} [options] Fetch options.
          * @param {string} [options.apiKey] Upstream key.
@@ -546,35 +555,79 @@ export function createDirectUpstream({
     const getApiKey = () => String(config.ZEN_API_KEY || '');
 
     const catalog = createModelCatalog({ fetchImpl, logger: log });
+    const learnedProtocols = new Map();
+    const protocolForModel = (model) => {
+        const explicit = String(model.protocol || model.api || '').toLowerCase();
+        const npm = String(model.npm || '').toLowerCase();
+        if (explicit.includes('messages') || npm.includes('anthropic')) return 'messages';
+        if (explicit.includes('responses') || npm === '@ai-sdk/openai') return 'responses';
+        if (explicit.includes('chat/completions') || npm.includes('openai-compatible')) return 'chat';
+        return null;
+    };
+    const isProtocolMismatch = (status, body) =>
+        status === 400 && /ModelProtocolUnsupported|model does not support this protocol/i.test(body);
+
+    /**
+     * Known model capability takes priority. A genuinely unknown model first
+     * uses the caller's native protocol; only the precise protocol-mismatch
+     * 400 triggers at most two converted attempts. Successful routes are
+     * remembered per provider/model, never shared between Go and Zen.
+     */
+    const dispatch = async (ctx, inbound) => {
+        const { providerID, modelID, body, stream, sessionId, signal, requestId } = ctx || {};
+        const baseUrl = resolveBaseUrlForProvider(providerID, { goBaseUrl, zenBaseUrl });
+        const key = providerID + '/' + modelID;
+        const cachedModels = await Promise.resolve(catalogCachedModels());
+        const model = cachedModels.find((entry) => entry.id === key);
+        const preferred = learnedProtocols.get(key) || protocolForModel(model || {}) || inbound;
+        const order = [...new Set([preferred, inbound, 'chat', 'responses', 'messages'])];
+        let lastResponse;
+        for (let i = 0; i < order.length; i++) {
+            const upstreamProtocol = order[i];
+            const upstreamBody = convertRequest(inbound, upstreamProtocol, { ...body, model: modelID, stream: !!stream });
+            const response = await requestUpstream({
+                baseUrl, path: protocolPath(upstreamProtocol), apiKey: getApiKey(),
+                sessionId, requestId: requestId || newRequestId(),
+                body: upstreamBody, signal, timeoutMs: requestTimeoutMs,
+                clientVersion, fetchImpl,
+                extraHeaders: upstreamProtocol === 'messages'
+                    ? { 'anthropic-version': '2023-06-01' } : {}
+            });
+            if (response.ok) {
+                learnedProtocols.set(key, upstreamProtocol);
+                upstreamProtocolByResponse.set(response, upstreamProtocol);
+                return response;
+            }
+            if (response.status !== 400) {
+                upstreamProtocolByResponse.set(response, upstreamProtocol);
+                return response;
+            }
+            const detail = await response.text();
+            if (!isProtocolMismatch(response.status, detail) || i === order.length - 1) {
+                const final = new Response(detail, { status: response.status, headers: response.headers });
+                upstreamProtocolByResponse.set(final, upstreamProtocol);
+                return final;
+            }
+            lastResponse = response;
+            log.debug('Retrying model with another native protocol', { providerID, modelID, protocol: upstreamProtocol });
+        }
+        return lastResponse;
+    };
+    const catalogCachedModels = () => catalog.peek?.() || [];
+
 
     /**
      * @param {DirectContext} ctx Turn context.
      * @param {string} path Upstream path.
      * @returns {Promise<Response>} Raw response.
      */
-    const send = (ctx, path) => {
-        const { providerID, modelID, body, stream, sessionId, signal, requestId } = ctx || {};
-        const baseUrl = resolveBaseUrlForProvider(providerID, { goBaseUrl, zenBaseUrl });
-        log.debug('Direct upstream request', { baseUrl, path, providerID, modelID, sessionId });
-        return requestUpstream({
-            baseUrl,
-            path,
-            apiKey: getApiKey(),
-            sessionId,
-            requestId: requestId || newRequestId(),
-            body: { ...body, model: modelID, stream: Boolean(stream) },
-            signal,
-            timeoutMs: requestTimeoutMs,
-            clientVersion,
-            fetchImpl
-        });
-    };
-
     return {
         /** @param {DirectContext} ctx */
-        chatCompletion: (ctx) => send(ctx, CHAT_COMPLETIONS_PATH),
+        chatCompletion: (ctx) => dispatch(ctx, 'chat'),
         /** @param {DirectContext} ctx */
-        responses: (ctx) => send(ctx, RESPONSES_PATH),
+        responses: (ctx) => dispatch(ctx, 'responses'),
+        /** @param {DirectContext} ctx */
+        messages: (ctx) => dispatch(ctx, 'messages'),
         /** @returns {Promise<DirectLabels[]>} */
         listModels: () =>
             catalog.getModels({
