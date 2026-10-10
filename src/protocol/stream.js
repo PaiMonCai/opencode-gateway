@@ -267,11 +267,18 @@ function makeEmitter(target, clientModel, state) {
                             )
                         );
                     if (content === e.value)
-                        out.push(wire({
-                            type: 'response.content_part.added',
-                            item_id: messageId, output_index: textIndex, content_index: 0,
-                            part: { type: 'output_text', text: '', annotations: [] }
-                        }, 'response.content_part.added'));
+                        out.push(
+                            wire(
+                                {
+                                    type: 'response.content_part.added',
+                                    item_id: messageId,
+                                    output_index: textIndex,
+                                    content_index: 0,
+                                    part: { type: 'output_text', text: '', annotations: [] }
+                                },
+                                'response.content_part.added'
+                            )
+                        );
                     out.push(
                         wire(
                             {
@@ -481,55 +488,116 @@ function makeEmitter(target, clientModel, state) {
                 }
                 if (reasoningIndex !== null) {
                     const item = {
-                        id: reasoningId, type: 'reasoning',
+                        id: reasoningId,
+                        type: 'reasoning',
                         summary: [{ type: 'summary_text', text: reasoningContent }]
                     };
-                    out.push(wire({
-                        type: 'response.reasoning_summary_text.done', item_id: reasoningId,
-                        output_index: reasoningIndex, summary_index: 0, text: reasoningContent
-                    }, 'response.reasoning_summary_text.done'));
-                    out.push(wire({
-                        type: 'response.output_item.done', output_index: reasoningIndex, item
-                    }, 'response.output_item.done'));
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.reasoning_summary_text.done',
+                                item_id: reasoningId,
+                                output_index: reasoningIndex,
+                                summary_index: 0,
+                                text: reasoningContent
+                            },
+                            'response.reasoning_summary_text.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_item.done',
+                                output_index: reasoningIndex,
+                                item
+                            },
+                            'response.output_item.done'
+                        )
+                    );
                     completedItems[reasoningIndex] = item;
                 }
                 if (textIndex !== null) {
                     const part = { type: 'output_text', text: content, annotations: [] };
                     const item = {
-                        id: messageId, type: 'message', role: 'assistant',
-                        status: 'completed', content: [part]
+                        id: messageId,
+                        type: 'message',
+                        role: 'assistant',
+                        status: 'completed',
+                        content: [part]
                     };
-                    out.push(wire({
-                        type: 'response.output_text.done', item_id: messageId,
-                        output_index: textIndex, content_index: 0, text: content
-                    }, 'response.output_text.done'));
-                    out.push(wire({
-                        type: 'response.content_part.done', item_id: messageId,
-                        output_index: textIndex, content_index: 0, part
-                    }, 'response.content_part.done'));
-                    out.push(wire({
-                        type: 'response.output_item.done', output_index: textIndex, item
-                    }, 'response.output_item.done'));
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_text.done',
+                                item_id: messageId,
+                                output_index: textIndex,
+                                content_index: 0,
+                                text: content
+                            },
+                            'response.output_text.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.content_part.done',
+                                item_id: messageId,
+                                output_index: textIndex,
+                                content_index: 0,
+                                part
+                            },
+                            'response.content_part.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_item.done',
+                                output_index: textIndex,
+                                item
+                            },
+                            'response.output_item.done'
+                        )
+                    );
                     completedItems[textIndex] = item;
                 }
                 for (const tool of tools.values()) {
                     const item = {
-                        id: tool.itemId, type: 'function_call', status: 'completed',
-                        call_id: tool.id, name: tool.name, arguments: tool.args
+                        id: tool.itemId,
+                        type: 'function_call',
+                        status: 'completed',
+                        call_id: tool.id,
+                        name: tool.name,
+                        arguments: tool.args
                     };
-                    out.push(wire({
-                        type: 'response.function_call_arguments.done',
-                        item_id: tool.itemId, output_index: tool.outputIndex, arguments: tool.args
-                    }, 'response.function_call_arguments.done'));
-                    out.push(wire({
-                        type: 'response.output_item.done',
-                        output_index: tool.outputIndex, item
-                    }, 'response.output_item.done'));
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.function_call_arguments.done',
+                                item_id: tool.itemId,
+                                output_index: tool.outputIndex,
+                                arguments: tool.args
+                            },
+                            'response.function_call_arguments.done'
+                        )
+                    );
+                    out.push(
+                        wire(
+                            {
+                                type: 'response.output_item.done',
+                                output_index: tool.outputIndex,
+                                item
+                            },
+                            'response.output_item.done'
+                        )
+                    );
                     completedItems[tool.outputIndex] = item;
                 }
                 const incomplete = finalReason === 'length' || finalReason === 'max_tokens';
                 const response = {
-                    id: responseId, object: 'response', model: clientModel,
+                    id: responseId,
+                    object: 'response',
+                    model: clientModel,
                     status: incomplete ? 'incomplete' : 'completed',
                     output: completedItems,
                     usage: usage || { input_tokens: 0, output_tokens: 0 }
