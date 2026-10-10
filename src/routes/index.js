@@ -38,5 +38,6 @@ export function createRoutes({ engine }) {
     router.use(createModelsRoute(engine));
     router.use(createChatRoute(engine));
     router.use(createResponsesRoute(engine));
+    router.post('/v1/messages', (req, res) => engine.handleMessages(req, res));
     return router;
 }
