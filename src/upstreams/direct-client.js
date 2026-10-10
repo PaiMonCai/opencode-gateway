@@ -584,14 +584,23 @@ export function createDirectUpstream({
         let lastResponse;
         for (let i = 0; i < order.length; i++) {
             const upstreamProtocol = order[i];
-            const upstreamBody = convertRequest(inbound, upstreamProtocol, { ...body, model: modelID, stream: !!stream });
+            const upstreamBody = convertRequest(inbound, upstreamProtocol, {
+                ...body,
+                model: modelID,
+                stream: !!stream
+            });
             const response = await requestUpstream({
-                baseUrl, path: protocolPath(upstreamProtocol), apiKey: getApiKey(),
-                sessionId, requestId: requestId || newRequestId(),
-                body: upstreamBody, signal, timeoutMs: requestTimeoutMs,
-                clientVersion, fetchImpl,
-                extraHeaders: upstreamProtocol === 'messages'
-                    ? { 'anthropic-version': '2023-06-01' } : {}
+                baseUrl,
+                path: protocolPath(upstreamProtocol),
+                apiKey: getApiKey(),
+                sessionId,
+                requestId: requestId || newRequestId(),
+                body: upstreamBody,
+                signal,
+                timeoutMs: requestTimeoutMs,
+                clientVersion,
+                fetchImpl,
+                extraHeaders: upstreamProtocol === 'messages' ? { 'anthropic-version': '2023-06-01' } : {}
             });
             if (response.ok) {
                 learnedProtocols.set(key, upstreamProtocol);
@@ -609,12 +618,15 @@ export function createDirectUpstream({
                 return final;
             }
             lastResponse = response;
-            log.debug('Retrying model with another native protocol', { providerID, modelID, protocol: upstreamProtocol });
+            log.debug('Retrying model with another native protocol', {
+                providerID,
+                modelID,
+                protocol: upstreamProtocol
+            });
         }
         return lastResponse;
     };
     const catalogCachedModels = () => catalog.peek?.() || [];
-
 
     /**
      * @param {DirectContext} ctx Turn context.
