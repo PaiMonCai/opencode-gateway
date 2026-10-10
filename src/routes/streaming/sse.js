@@ -76,7 +76,12 @@ export function startSseKeepalive(res, intervalMs = 15000) {
  * @returns {Promise<string>} Text observed across streamed deltas.
  */
 export async function relayDirectSse({
-    res, body, clientModelName, onSuccess = null, sourceProtocol = null, targetProtocol = null
+    res,
+    body,
+    clientModelName,
+    onSuccess = null,
+    sourceProtocol = null,
+    targetProtocol = null
 }) {
     prepareSse(res, { flush: true });
     let streamedContent = '';
@@ -96,13 +101,23 @@ export async function relayDirectSse({
         if (!res.writableEnded && !res.destroyed) {
             const message = error instanceof Error ? error.message : 'upstream stream failed';
             if (targetProtocol === 'responses') {
-                res.write('event: response.failed\ndata: ' + JSON.stringify({
-                    type: 'response.failed', response: { error: { message } }
-                }) + '\n\n');
+                res.write(
+                    'event: response.failed\ndata: ' +
+                        JSON.stringify({
+                            type: 'response.failed',
+                            response: { error: { message } }
+                        }) +
+                        '\n\n'
+                );
             } else if (targetProtocol === 'messages') {
-                res.write('event: error\ndata: ' + JSON.stringify({
-                    type: 'error', error: { type: 'api_error', message }
-                }) + '\n\n');
+                res.write(
+                    'event: error\ndata: ' +
+                        JSON.stringify({
+                            type: 'error',
+                            error: { type: 'api_error', message }
+                        }) +
+                        '\n\n'
+                );
             } else {
                 res.write('data: ' + JSON.stringify({ error: { message } }) + '\n\n');
             }
