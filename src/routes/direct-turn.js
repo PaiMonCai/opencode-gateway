@@ -158,9 +158,9 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             try {
                 payload = convertResponse(native, incoming, await upstreamResponse.json());
             } catch (error) {
-                return res
-                    .status(502)
-                    .json({ error: { type: 'protocol_conversion_error', message: error.message } });
+                res.status(502).json({ error: { type: 'protocol_conversion_error',
+                    message: error instanceof Error ? error.message : 'Invalid upstream response' } });
+                return { handled: true };
             }
             const answerText = extractAssistantText(payload);
             if (payload && typeof payload === 'object') {
