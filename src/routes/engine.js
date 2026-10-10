@@ -1028,6 +1028,7 @@ export function createTurnEngine({
      * Runtime-only models remain on the existing Chat/Responses surfaces;
      * there is no misleading translation of local SDK sessions.
      */
+    /** @param {import('express').Request} req @param {import('express').Response} res */
     const handleMessages = async (req, res) => {
         try {
             const body = req.body || {};
@@ -1072,11 +1073,11 @@ export function createTurnEngine({
             });
         } catch (e) {
             if (!res.headersSent) {
-                res.status(e.statusCode || 502).json({
+                res.status(/** @type {{statusCode?: number}} */ (e)?.statusCode || 502).json({
                     type: 'error',
                     error: {
-                        type: e.code || 'upstream_error',
-                        message: e.message || 'Upstream failed'
+                        type: /** @type {{code?: string}} */ (e)?.code || 'upstream_error',
+                        message: e instanceof Error ? e.message : 'Upstream failed'
                     }
                 });
             }
