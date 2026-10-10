@@ -1022,9 +1022,49 @@ export function createTurnEngine({
         DISABLE_TOOLS
     });
 
+    /**
+     * Anthropic Messages uses the same Direct adapter as Chat/Responses.
+     * Runtime-only models remain on the existing Chat/Responses surfaces;
+     * there is no misleading translation of local SDK sessions.
+     */
+    const handleMessages = async (req, res) => {
+        try {
+            const body = req.body || {};
+            if (!body.model || !Array.isArray(body.messages) || !body.messages.length) {
+                res.status(400).json({ type: 'error', error: { type: 'invalid_request_error',
+                    message: 'model and non-empty messages are required' } });
+                return;
+            }
+            const resolved = await resolveRequestedModel(body.model);
+            if (!router.shouldUseDirect(resolved.providerID, resolved.modelID).direct) {
+                res.status(422).json({ type: 'error', error: { type: 'invalid_request_error',
+                    message: 'Anthropic Messages currently requires an authenticated Direct upstream' } });
+                return;
+            }
+            const turnAbort = new AbortController();
+            res.on('close', () => {
+                if (!res.writableEnded) turnAbort.abort();
+            });
+            await runDirectTurn({
+                path: '/messages', res, providerID: resolved.providerID, modelID: resolved.modelID,
+                sessionId: req.get('x-deepseek-harness-session-id')
+                    || req.get('x-opencode-session') || newSessionId(),
+                body, stream: !!body.stream, clientModelName: resolved.resolved,
+                signal: turnAbort.signal
+            });
+        } catch (e) {
+            if (!res.headersSent) {
+                res.status(e.statusCode || 502).json({ type: 'error', error: {
+                    type: e.code || 'upstream_error', message: e.message || 'Upstream failed'
+                } });
+            }
+        }
+    };
+
     return {
         handleChat,
         handleResponses,
+        handleMessages,
         handleHealth,
         handleHealthDetails,
         handleMetrics,
