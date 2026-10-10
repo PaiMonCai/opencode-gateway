@@ -85,7 +85,8 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
                 error: /** @type {Error} */ (error).message
             });
             if (error?.code === 'protocol_conversion_error') {
-                return res.status(422).json({ error: { type: 'protocol_conversion_error', message: error.message } });
+                res.status(422).json({ error: { type: 'protocol_conversion_error', message: error.message } });
+                return { handled: true };
             }
             if (allowsFallback) return fallback('transport');
             throw error;
