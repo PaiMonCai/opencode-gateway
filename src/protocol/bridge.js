@@ -113,8 +113,9 @@ const toChatMessage = (m) => {
 const decodeChat = (input) => ({
     model: input.model,
     stream: !!input.stream,
-    system: [],
-    messages: (input.messages || []).map((m) => ({
+    system: (input.messages || []).filter((m) => m.role === 'system' || m.role === 'developer')
+        .flatMap((m) => textBlocks(m.content)),
+    messages: (input.messages || []).filter((m) => m.role !== 'system' && m.role !== 'developer').map((m) => ({
         role: m.role,
         parts: [
             ...textBlocks(m.content),
