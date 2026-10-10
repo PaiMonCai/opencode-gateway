@@ -36,32 +36,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # TEMPORARY: produce exact Prettier-formatted source for a one-time
-      # branch sync. This step is removed before the PR can be merged.
-      - name: Format preview
-        run: |
-          files=(
-            src/protocol/bridge.js
-            src/protocol/stream.js
-            src/upstreams/direct-client.js
-            src/routes/direct-turn.js
-            src/routes/engine.js
-            src/routes/index.js
-            src/routes/streaming/sse.js
-            tests/unit/protocol/bridge.test.js
-            tests/unit/routes/direct-turn.test.js
-            README.md
-            docs/zh/api-reference.md
-            docs/en/api-reference.md
-          )
-          npx prettier --write "${files[@]}"
-          for path in "${files[@]}"; do
-            echo "FMTSTART:$path"
-            base64 -w0 "$path"
-            printf '\n'
-            echo "FMTEND:$path"
-          done
-
       - name: Format check
         run: npm run format:check
 
