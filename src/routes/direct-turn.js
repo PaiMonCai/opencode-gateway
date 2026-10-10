@@ -7,7 +7,12 @@
  * @module routes/direct-turn
  */
 
-import { extractAssistantText, isDirectAuthFailure, isFreeTierRefusal, upstreamProtocolOf } from '../upstreams/direct-client.js';
+import {
+    extractAssistantText,
+    isDirectAuthFailure,
+    isFreeTierRefusal,
+    upstreamProtocolOf
+} from '../upstreams/direct-client.js';
 import { convertResponse } from '../protocol/bridge.js';
 import { relayDirectSse } from './streaming/sse.js';
 
@@ -78,14 +83,16 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
                 path === '/chat/completions'
                     ? await direct.chatCompletion(directRequest)
                     : path === '/messages'
-                        ? await direct.messages(directRequest)
-                        : await direct.responses(directRequest);
+                      ? await direct.messages(directRequest)
+                      : await direct.responses(directRequest);
         } catch (error) {
             logWarn('[Proxy] Direct upstream request failed:', {
                 error: /** @type {Error} */ (error).message
             });
             if (error?.code === 'protocol_conversion_error') {
-                res.status(422).json({ error: { type: 'protocol_conversion_error', message: error.message } });
+                res.status(422).json({
+                    error: { type: 'protocol_conversion_error', message: error.message }
+                });
                 return { handled: true };
             }
             if (allowsFallback) return fallback('transport');
@@ -140,7 +147,8 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             );
         }
 
-        const incoming = path === '/chat/completions' ? 'chat' : path === '/responses' ? 'responses' : 'messages';
+        const incoming =
+            path === '/chat/completions' ? 'chat' : path === '/responses' ? 'responses' : 'messages';
         const native = upstreamProtocolOf(upstreamResponse, incoming);
         const contentType = upstreamResponse.headers?.get?.('content-type') || '';
         const isEventStream = Boolean(stream) && (contentType.includes('text/event-stream') || !contentType);
@@ -150,7 +158,9 @@ export function createDirectTurnRunner({ direct, router, logWarn = () => {} }) {
             try {
                 payload = convertResponse(native, incoming, await upstreamResponse.json());
             } catch (error) {
-                return res.status(502).json({ error: { type: 'protocol_conversion_error', message: error.message } });
+                return res
+                    .status(502)
+                    .json({ error: { type: 'protocol_conversion_error', message: error.message } });
             }
             const answerText = extractAssistantText(payload);
             if (payload && typeof payload === 'object') {
