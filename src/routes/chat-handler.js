@@ -635,7 +635,7 @@ export function createChatHandler(deps) {
 
                     const usage = await readRuntimeUsage({
                         client,
-                        sessionId,
+                        sessionId: /** @type {string} */ (sessionId),
                         baseline: turnBaseline,
                         protocol: 'chat',
                         estimate: {
@@ -747,7 +747,7 @@ export function createChatHandler(deps) {
                     const reasoningTokensCalc = Math.ceil((reasoning || '').length / 4);
                     const usage = await readRuntimeUsage({
                         client,
-                        sessionId,
+                        sessionId: /** @type {string} */ (sessionId),
                         baseline: turnBaseline,
                         protocol: 'chat',
                         estimate: {
