@@ -357,9 +357,10 @@ describe('responses contract', () => {
             input_tokens: expect.any(Number),
             output_tokens: expect.any(Number),
             total_tokens: expect.any(Number),
-            input_tokens_details: { cached_tokens: 0 },
             output_tokens_details: { reasoning_tokens: expect.any(Number) }
         });
+        // Fake Runtime messages omit cache metadata. Unknown must not be reported as a cache miss.
+        expect(res.body.usage.input_tokens_details).toBeUndefined();
     });
 
     test('streaming emits the documented event sequence and terminates with [DONE]', async () => {
