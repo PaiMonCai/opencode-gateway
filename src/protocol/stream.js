@@ -111,7 +111,53 @@ function normalizeFrame(source, frame, state) {
     }
     return result;
 }
-function makeEmitter(target, clientModel, state) {
+/**
+ * Normalize usage counters when Chat Completions and Responses SSE formats differ.
+ * Keeping a Chat-shaped usage object inside response.completed is not valid:
+ * Responses clients (including New API) only read input_tokens_details.cached_tokens.
+ * Preserve provider-specific fields such as audio and cache-write counts.
+ */
+function convertStreamUsage(source, target, value) {
+    if (!value || typeof value !== 'object' || source === target) return value;
+
+    if (source === 'chat' && target === 'responses') {
+        const {
+            prompt_tokens,
+            completion_tokens,
+            prompt_tokens_details,
+            completion_tokens_details,
+            ...other
+        } = value;
+        const input = prompt_tokens ?? 0;
+        const output = completion_tokens ?? 0;
+        return {
+            ...other,
+            input_tokens: input,
+            output_tokens: output,
+            total_tokens: value.total_tokens ?? input + output,
+            ...(prompt_tokens_details == null ? {} : { input_tokens_details: prompt_tokens_details }),
+            ...(completion_tokens_details == null ? {} : { output_tokens_details: completion_tokens_details })
+        };
+    }
+
+    if (source === 'responses' && target === 'chat') {
+        const { input_tokens, output_tokens, input_tokens_details, output_tokens_details, ...other } = value;
+        const input = input_tokens ?? 0;
+        const output = output_tokens ?? 0;
+        return {
+            ...other,
+            prompt_tokens: input,
+            completion_tokens: output,
+            total_tokens: value.total_tokens ?? input + output,
+            ...(input_tokens_details == null ? {} : { prompt_tokens_details: input_tokens_details }),
+            ...(output_tokens_details == null ? {} : { completion_tokens_details: output_tokens_details })
+        };
+    }
+
+    return value;
+}
+
+function makeEmitter(source, target, clientModel, state) {
     const id = state;
     const tools = new Map();
     let started = false;
@@ -223,7 +269,7 @@ function makeEmitter(target, clientModel, state) {
         emit(e) {
             if (finished) return [];
             if (e.kind === 'usage') {
-                usage = e.value;
+                usage = convertStreamUsage(source, target, e.value);
                 return [];
             }
             if (e.kind === 'finish') {
@@ -615,7 +661,7 @@ function makeEmitter(target, clientModel, state) {
 }
 export async function* transcodeSse(body, source, target, clientModel) {
     const state = { id: null, model: clientModel, nextIndex: 0 };
-    const emitter = makeEmitter(target, clientModel, state);
+    const emitter = makeEmitter(source, target, clientModel, state);
     let ended = false;
     for await (const frame of frames(body)) {
         const events = normalizeFrame(source, frame, state);
