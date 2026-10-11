@@ -121,8 +121,13 @@ function convertStreamUsage(source, target, value) {
     if (!value || typeof value !== 'object' || source === target) return value;
 
     if (source === 'chat' && target === 'responses') {
-        const { prompt_tokens, completion_tokens, prompt_tokens_details, completion_tokens_details, ...other } =
-            value;
+        const {
+            prompt_tokens,
+            completion_tokens,
+            prompt_tokens_details,
+            completion_tokens_details,
+            ...other
+        } = value;
         const input = prompt_tokens ?? 0;
         const output = completion_tokens ?? 0;
         return {
@@ -131,15 +136,12 @@ function convertStreamUsage(source, target, value) {
             output_tokens: output,
             total_tokens: value.total_tokens ?? input + output,
             ...(prompt_tokens_details == null ? {} : { input_tokens_details: prompt_tokens_details }),
-            ...(completion_tokens_details == null
-                ? {}
-                : { output_tokens_details: completion_tokens_details })
+            ...(completion_tokens_details == null ? {} : { output_tokens_details: completion_tokens_details })
         };
     }
 
     if (source === 'responses' && target === 'chat') {
-        const { input_tokens, output_tokens, input_tokens_details, output_tokens_details, ...other } =
-            value;
+        const { input_tokens, output_tokens, input_tokens_details, output_tokens_details, ...other } = value;
         const input = input_tokens ?? 0;
         const output = output_tokens ?? 0;
         return {
@@ -148,9 +150,7 @@ function convertStreamUsage(source, target, value) {
             completion_tokens: output,
             total_tokens: value.total_tokens ?? input + output,
             ...(input_tokens_details == null ? {} : { prompt_tokens_details: input_tokens_details }),
-            ...(output_tokens_details == null
-                ? {}
-                : { completion_tokens_details: output_tokens_details })
+            ...(output_tokens_details == null ? {} : { completion_tokens_details: output_tokens_details })
         };
     }
 
