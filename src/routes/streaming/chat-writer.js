@@ -7,6 +7,7 @@
  * @module routes/streaming/chat-writer
  */
 
+import { formatRuntimeUsage } from '../../upstreams/runtime-usage.js';
 import { writeSseDone, writeSseEvent } from './sse.js';
 
 /** @typedef {import('../../tools/contract.js').WireToolCall} WireToolCall */
@@ -21,7 +22,7 @@ import { writeSseDone, writeSseEvent } from './sse.js';
  *   toolCall: (toolCall: import('../../tools/contract.js').WireToolCall, index: number) => void,
  *   toolCalls: (toolCalls: import('../../tools/contract.js').WireToolCall[]) => void,
  *   delta: (text: string, isReasoning?: boolean) => void,
- *   finish: (usage: {promptTokens: number, completionTokens: number, reasoningTokens: number}, finishReason?: string) => void,
+ *   finish: (usage: Record<string, any>, finishReason?: string) => void,
  *   done: () => void
  * }}
  */
@@ -101,20 +102,19 @@ export function createChatStreamWriter({
     };
 
     /**
-     * @param {{promptTokens: number, completionTokens: number, reasoningTokens: number}} usage Usage counters.
+     * @param {Record<string, any>} usage OpenAI-compatible usage counters.
      * @param {string} [finishReason] Final reason.
      * @returns {void}
      */
-    const finish = ({ promptTokens, completionTokens, reasoningTokens }, finishReason = 'stop') => {
+    const finish = (usage, finishReason = 'stop') => {
+        let normalizedUsage = usage;
+        if (typeof usage.prompt_tokens !== 'number') {
+            normalizedUsage = formatRuntimeUsage(null, 'chat', /** @type {any} */ (usage));
+        }
         writeSseEvent(res, {
             id,
             choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
-            usage: {
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens + reasoningTokens,
-                total_tokens: promptTokens + completionTokens + reasoningTokens,
-                completion_tokens_details: { reasoning_tokens: reasoningTokens }
-            }
+            usage: normalizedUsage
         });
     };
 

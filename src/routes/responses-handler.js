@@ -14,6 +14,7 @@ import {
 } from '../conversation/index.js';
 import { transformUpstreamError } from '../errors/index.js';
 import { newSessionId } from '../upstreams/direct-client.js';
+import { readRuntimeUsage } from '../upstreams/runtime-usage.js';
 import {
     createExternalToolCallStreamParser,
     createToolCallFilter,
@@ -595,6 +596,14 @@ export function createResponsesHandler(deps) {
                 const promptTokens = Math.ceil(fullPromptText.length / 4);
                 const completionTokens = Math.ceil(content.length / 4);
                 const reasoningTokens = Math.ceil(reasoning.length / 4);
+                const usage = await readRuntimeUsage({
+                    client,
+                    sessionId,
+                    baseline: turnBaseline,
+                    protocol: 'responses',
+                    estimate: { promptTokens, completionTokens, reasoningTokens },
+                    logDebug
+                });
                 const response = {
                     id: responseId,
                     object: 'response',
@@ -604,13 +613,7 @@ export function createResponsesHandler(deps) {
                         ? { effort: reasoningLevel, summary: safeReasoning.substring(0, 100) }
                         : undefined,
                     output: streamOutput,
-                    usage: {
-                        input_tokens: promptTokens,
-                        output_tokens: completionTokens + reasoningTokens,
-                        total_tokens: promptTokens + completionTokens + reasoningTokens,
-                        input_tokens_details: { cached_tokens: 0 },
-                        output_tokens_details: { reasoning_tokens: reasoningTokens }
-                    }
+                    usage
                 };
                 responsesStreamWriter.complete(response);
                 responsesStreamWriter.done();
@@ -712,6 +715,14 @@ export function createResponsesHandler(deps) {
             );
 
             const responseId = `resp_${crypto.randomUUID()}`;
+            const usage = await readRuntimeUsage({
+                client,
+                sessionId,
+                baseline: turnBaseline,
+                protocol: 'responses',
+                estimate: { promptTokens, completionTokens, reasoningTokens },
+                logDebug
+            });
             const response = {
                 id: responseId,
                 object: 'response',
@@ -721,13 +732,7 @@ export function createResponsesHandler(deps) {
                     ? { effort: reasoningLevel, summary: safeReasoning.substring(0, 100) }
                     : undefined,
                 output,
-                usage: {
-                    input_tokens: promptTokens,
-                    output_tokens: completionTokens + reasoningTokens,
-                    total_tokens: promptTokens + completionTokens + reasoningTokens,
-                    input_tokens_details: { cached_tokens: 0 },
-                    output_tokens_details: { reasoning_tokens: reasoningTokens }
-                }
+                usage
             };
 
             storeResponseState(responseId, sessionId, `${pID}/${mID}`);

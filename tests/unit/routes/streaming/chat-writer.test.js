@@ -58,4 +58,21 @@ describe('Chat SSE writer', () => {
         });
         expect(res.writes[4]).toBe('data: [DONE]\n\n');
     });
+    test('relays authoritative cached usage unchanged in the final SSE event', () => {
+        const res = createResponse();
+        const writer = createChatStreamWriter({
+            res: /** @type {any} */ (res),
+            id: 'chatcmpl-cache',
+            model: 'opencode-go/step-5-preview-free'
+        });
+        const usage = {
+            prompt_tokens: 136822,
+            completion_tokens: 81,
+            total_tokens: 136903,
+            prompt_tokens_details: { cached_tokens: 136640 },
+            completion_tokens_details: { reasoning_tokens: 1 }
+        };
+        writer.finish(usage);
+        expect(decode(res.writes[0]).usage).toEqual(usage);
+    });
 });

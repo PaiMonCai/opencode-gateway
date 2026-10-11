@@ -17,6 +17,7 @@ import {
 } from '../conversation/index.js';
 import { transformUpstreamError } from '../errors/index.js';
 import { newSessionId } from '../upstreams/direct-client.js';
+import { readRuntimeUsage } from '../upstreams/runtime-usage.js';
 import {
     createExternalToolCallStreamParser,
     createToolCallFilter,
@@ -632,11 +633,19 @@ export function createChatHandler(deps) {
 
                     if (stopKeepalive) stopKeepalive();
 
-                    const promptTokens = Math.ceil((fullPromptText || '').length / 4);
-                    chatStreamWriter.finish(
-                        { promptTokens, completionTokens, reasoningTokens },
-                        finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
-                    );
+                    const usage = await readRuntimeUsage({
+                        client,
+                        sessionId: /** @type {string} */ (sessionId),
+                        baseline: turnBaseline,
+                        protocol: 'chat',
+                        estimate: {
+                            promptTokens: Math.ceil((fullPromptText || '').length / 4),
+                            completionTokens,
+                            reasoningTokens
+                        },
+                        logDebug
+                    });
+                    chatStreamWriter.finish(usage, finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop');
                     storeConversationEntry(conversationKey, {
                         sessionId,
                         sentCount: turnPlan?.sentCount,
@@ -736,7 +745,18 @@ export function createChatHandler(deps) {
                     const promptTokens = Math.ceil((fullPromptText || '').length / 4);
                     const completionTokensCalc = Math.ceil((content || '').length / 4);
                     const reasoningTokensCalc = Math.ceil((reasoning || '').length / 4);
-                    const totalTokens = promptTokens + completionTokensCalc + reasoningTokensCalc;
+                    const usage = await readRuntimeUsage({
+                        client,
+                        sessionId: /** @type {string} */ (sessionId),
+                        baseline: turnBaseline,
+                        protocol: 'chat',
+                        estimate: {
+                            promptTokens,
+                            completionTokens: completionTokensCalc,
+                            reasoningTokens: reasoningTokensCalc
+                        },
+                        logDebug
+                    });
 
                     const publicValidatedToolCalls = toPublicToolCalls(validatedToolCalls);
                     /** @type {AssistantMessageOut} */
@@ -769,14 +789,7 @@ export function createChatHandler(deps) {
                                 finish_reason: publicValidatedToolCalls.length > 0 ? 'tool_calls' : 'stop'
                             }
                         ],
-                        usage: {
-                            prompt_tokens: promptTokens,
-                            completion_tokens: completionTokensCalc + reasoningTokensCalc,
-                            total_tokens: totalTokens,
-                            completion_tokens_details: {
-                                reasoning_tokens: reasoningTokensCalc
-                            }
-                        }
+                        usage
                     });
                 }
             } catch (error) {
