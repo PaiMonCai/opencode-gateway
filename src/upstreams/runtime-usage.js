@@ -68,10 +68,12 @@ export function formatRuntimeUsage(tokens, protocol, estimate) {
             output_tokens: completion,
             total_tokens: prompt + completion,
             ...(tokens?.cacheReported
-                ? { input_tokens_details: {
-                    cached_tokens: tokens.cacheRead,
-                    ...(tokens.cacheWrite > 0 ? { cache_creation_tokens: tokens.cacheWrite } : {})
-                } }
+                ? {
+                      input_tokens_details: {
+                          cached_tokens: tokens.cacheRead,
+                          ...(tokens.cacheWrite > 0 ? { cache_creation_tokens: tokens.cacheWrite } : {})
+                      }
+                  }
                 : {}),
             output_tokens_details: { reasoning_tokens: reasoning }
         };
@@ -81,10 +83,12 @@ export function formatRuntimeUsage(tokens, protocol, estimate) {
         completion_tokens: completion,
         total_tokens: prompt + completion,
         ...(tokens?.cacheReported
-            ? { prompt_tokens_details: {
-                cached_tokens: tokens.cacheRead,
-                ...(tokens.cacheWrite > 0 ? { cache_creation_tokens: tokens.cacheWrite } : {})
-            } }
+            ? {
+                  prompt_tokens_details: {
+                      cached_tokens: tokens.cacheRead,
+                      ...(tokens.cacheWrite > 0 ? { cache_creation_tokens: tokens.cacheWrite } : {})
+                  }
+              }
             : {}),
         completion_tokens_details: { reasoning_tokens: reasoning }
     };
@@ -110,8 +114,10 @@ export async function readRuntimeUsage({ client, sessionId, baseline = null, pro
         if (tokens) return formatRuntimeUsage(tokens, protocol, estimate);
         logDebug?.('Runtime usage unavailable; returning estimated tokens without cache attribution');
     } catch (error) {
-        logDebug?.('Runtime usage snapshot failed; returning estimated tokens without cache attribution',
-            error instanceof Error ? error.message : String(error));
+        logDebug?.(
+            'Runtime usage snapshot failed; returning estimated tokens without cache attribution',
+            error instanceof Error ? error.message : String(error)
+        );
     }
     return formatRuntimeUsage(null, protocol, estimate);
 }

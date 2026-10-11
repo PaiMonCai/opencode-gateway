@@ -645,10 +645,7 @@ export function createChatHandler(deps) {
                         },
                         logDebug
                     });
-                    chatStreamWriter.finish(
-                        usage,
-                        finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop'
-                    );
+                    chatStreamWriter.finish(usage, finalStreamedToolCalls.length > 0 ? 'tool_calls' : 'stop');
                     storeConversationEntry(conversationKey, {
                         sessionId,
                         sentCount: turnPlan?.sentCount,

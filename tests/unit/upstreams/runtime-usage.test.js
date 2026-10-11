@@ -45,13 +45,16 @@ describe('Runtime authoritative usage', () => {
 
     test('sums all new assistant steps, excludes previous turns and de-duplicates snapshots', () => {
         const baseline = { messageIds: new Set(['old']) };
-        const tokens = aggregateRuntimeTokens([
-            item('old', { input: 5000, output: 2, reasoning: 0, cache: { read: 8000, write: 0 } }),
-            item('first', { input: 20, output: 2, reasoning: 1, cache: { read: 30, write: 0 } }),
-            item('first', { input: 20, output: 5, reasoning: 1, cache: { read: 30, write: 0 } }),
-            item('second', { input: 4, output: 8, reasoning: 0, cache: { read: 40, write: 3 } }),
-            item('user', { input: 999, output: 99 }, 'user')
-        ], baseline);
+        const tokens = aggregateRuntimeTokens(
+            [
+                item('old', { input: 5000, output: 2, reasoning: 0, cache: { read: 8000, write: 0 } }),
+                item('first', { input: 20, output: 2, reasoning: 1, cache: { read: 30, write: 0 } }),
+                item('first', { input: 20, output: 5, reasoning: 1, cache: { read: 30, write: 0 } }),
+                item('second', { input: 4, output: 8, reasoning: 0, cache: { read: 40, write: 3 } }),
+                item('user', { input: 999, output: 99 }, 'user')
+            ],
+            baseline
+        );
         expect(tokens).toEqual({
             input: 24,
             output: 13,
@@ -90,9 +93,13 @@ describe('Runtime authoritative usage', () => {
     test('unknown/malformed message shapes do not manufacture cache statistics', () => {
         expect(aggregateRuntimeTokens(null)).toBeNull();
         expect(aggregateRuntimeTokens([{ info: { role: 'assistant' } }])).toBeNull();
-        expect(aggregateRuntimeTokens([
-            item('bad', { input: -1, output: NaN, reasoning: Infinity, cache: {} })
-        ])).toBeNull();
-        expect(aggregateRuntimeTokens([item('a', { input: 10, output: 1, reasoning: 0, cache: { read: 0, write: 0 } })]).cacheReported).toBe(true);
+        expect(
+            aggregateRuntimeTokens([item('bad', { input: -1, output: NaN, reasoning: Infinity, cache: {} })])
+        ).toBeNull();
+        expect(
+            aggregateRuntimeTokens([
+                item('a', { input: 10, output: 1, reasoning: 0, cache: { read: 0, write: 0 } })
+            ]).cacheReported
+        ).toBe(true);
     });
 });
