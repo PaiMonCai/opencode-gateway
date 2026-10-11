@@ -61,7 +61,6 @@ describe('§3 non-streaming response', () => {
                 input_tokens: expect.any(Number),
                 output_tokens: expect.any(Number),
                 total_tokens: expect.any(Number),
-                input_tokens_details: { cached_tokens: 0 },
                 output_tokens_details: { reasoning_tokens: expect.any(Number) }
             }
         });
@@ -91,6 +90,7 @@ describe('§3 non-streaming response', () => {
             output_tokens: 0,
             total_tokens: expect.any(Number)
         });
+        expect(res.body.usage.input_tokens_details).toBeUndefined();
     });
 
     test('the chat surface does not leak an empty answer (contrast case)', async () => {
