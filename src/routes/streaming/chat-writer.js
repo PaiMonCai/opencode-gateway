@@ -108,7 +108,7 @@ export function createChatStreamWriter({
      */
     const finish = (usage, finishReason = 'stop') => {
         const normalizedUsage =
-            typeof usage.prompt_tokens === 'number' ? usage : formatRuntimeUsage(null, 'chat', usage);
+            typeof usage.prompt_tokens === 'number' ? usage : formatRuntimeUsage(null, 'chat', /** @type {any} */ (usage));
         writeSseEvent(res, {
             id,
             choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
